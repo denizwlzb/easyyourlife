@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Badges – EasyYourLife</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-base="../">
+<header id="nav"></header>
+<main class="wrap">
+  <section class="hero"><h1>🏅 Les badges</h1><p id="sous">Tous les accomplissements à débloquer sur EasyYourLife.</p></section>
+  <section class="card"><div id="grid" class="badge-grid"></div></section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../assets/app.js"></script>
+<script>
+(async () => {
+  const user = await initPage();
+  const { data } = await sb.from('badges').select('*').order('sort_order');
+  const badges = data || [];
+  const earned = user ? await myBadgeCodes(user.id) : new Set();
+  if (user) $('#sous').textContent = `Tu en as débloqué ${earned.size} sur ${badges.length}.`;
+  else $('#sous').innerHTML = 'Tous les accomplissements à débloquer. <a href="../connexion/">Connecte-toi</a> pour suivre ta progression.';
+  $('#grid').innerHTML = badges.map(b => `<div class="badge ${earned.has(b.code) ? '' : 'locked'}"><div class="ico">${esc(b.icon)}</div><b>${esc(b.name)}</b><small>${esc(b.description)}</small></div>`).join('') || '<p class="muted">Aucun badge pour le moment.</p>';
+})();
+</script>
+</body>
+</html>

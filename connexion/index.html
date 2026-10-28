@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Connexion – EasyYourLife</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-base="../">
+<header id="nav"></header>
+<main class="wrap" style="max-width:460px">
+  <div class="card">
+    <h1 id="titre">Connexion</h1>
+    <div class="seg" role="tablist">
+      <button type="button" id="seg-login" aria-selected="true">Se connecter</button>
+      <button type="button" id="seg-signup" aria-selected="false">Créer un compte</button>
+    </div>
+    <form id="form" novalidate>
+      <label class="field" id="f-pseudo" hidden><span>Pseudo (3 à 24 lettres, chiffres ou _)</span><input type="text" id="pseudo" autocomplete="username" maxlength="24"></label>
+      <label class="field"><span>Email</span><input type="email" id="email" autocomplete="email" required></label>
+      <label class="field"><span>Mot de passe (8 caractères minimum)</span><input type="password" id="mdp" autocomplete="current-password" required minlength="8"></label>
+      <button class="btn" id="go" type="submit" style="width:100%">Se connecter</button>
+      <p><button type="button" class="link" id="oubli">Mot de passe oublié ?</button></p>
+    </form>
+    <div id="msg" class="msg" hidden></div>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../assets/app.js"></script>
+<script>
+(async () => {
+  const user = await initPage();
+  if (user) { location.replace('../profil/'); return; }
+  let mode = 'login';
+  const msg = $('#msg');
+  const say = (t, err) => { msg.hidden = false; msg.className = 'msg' + (err ? ' err' : ''); msg.textContent = t; };
+  const traduire = m => {
+    if (/Invalid login credentials/i.test(m)) return 'Email ou mot de passe incorrect.';
+    if (/Email not confirmed/i.test(m)) return "Confirme d'abord ton email grâce au lien reçu.";
+    if (/already registered|already been registered/i.test(m)) return 'Cet email a déjà un compte. Connecte-toi.';
+    if (/Password should be/i.test(m)) return 'Mot de passe trop court (8 caractères minimum).';
+    if (/rate limit/i.test(m)) return 'Trop de tentatives. Réessaie dans quelques minutes.';
+    return m;
+  };
+  function setMode(m) {
+    mode = m;
+    $('#seg-login').setAttribute('aria-selected', m === 'login');
+    $('#seg-signup').setAttribute('aria-selected', m === 'signup');
+    $('#f-pseudo').hidden = m !== 'signup';
+    $('#titre').textContent = m === 'login' ? 'Connexion' : 'Créer un compte';
+    $('#go').textContent = m === 'login' ? 'Se connecter' : "S'inscrire";
+    $('#mdp').autocomplete = m === 'login' ? 'current-password' : 'new-password';
+    msg.hidden = true;
+  }
+  $('#seg-login').onclick = () => setMode('login');
+  $('#seg-signup').onclick = () => setMode('signup');
+  $('#form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = $('#email').value.trim(), mdp = $('#mdp').value, pseudo = $('#pseudo').value.trim();
+    if (!email || mdp.length < 8) return say('Entre un email valide et un mot de passe de 8 caractères minimum.', true);
+    $('#go').disabled = true;
+    try {
+      if (mode === 'signup') {
+        if (!/^[A-Za-z0-9_]{3,24}$/.test(pseudo)) { say('Pseudo invalide : 3 à 24 caractères, lettres, chiffres ou _.', true); return; }
+        const { data, error } = await sb.auth.signUp({ email, password: mdp, options: { data: { username: pseudo }, emailRedirectTo: new URL('../profil/', location.href).href } });
+        if (error) return say(traduire(error.message), true);
+        if (data.session) { location.href = '../profil/'; return; }
+        say('Compte créé ! Vérifie ta boîte mail et clique sur le lien de confirmation, puis reviens te connecter.');
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email, password: mdp });
+        if (error) return say(traduire(error.message), true);
+        location.href = '../profil/';
+      }
+    } finally { $('#go').disabled = false; }
+  });
+  $('#oubli').onclick = async () => {
+    const email = $('#email').value.trim();
+    if (!email) return say("Entre ton email ci-dessus, puis clique sur « Mot de passe oublié ».", true);
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: new URL('../profil/', location.href).href });
+    if (error) return say(traduire(error.message), true);
+    say('Si un compte existe pour cet email, un lien de réinitialisation vient de partir.');
+  };
+})();
+</script>
+</body>
+</html>

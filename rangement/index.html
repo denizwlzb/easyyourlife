@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ranger & décorer – EasyYourLife</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-base="../">
+<header id="nav"></header>
+<main class="wrap">
+  <div id="login-banner" class="banner" hidden></div>
+  <section class="card roulette">
+    <h1>🏠 Ranger &amp; décorer</h1>
+    <p class="muted">Appuie sur le bouton : une pièce est tirée au sort et tu reçois un plan complet, étape par étape.</p>
+    <div id="slot" class="slot" aria-live="polite">🎲</div>
+    <button id="btn-roll" class="btn big">🎲 Tirer une pièce</button>
+    <div id="chips" class="chips" aria-label="Choisir une pièce"></div>
+  </section>
+  <section id="room" hidden></section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../assets/app.js"></script>
+<script src="../assets/rooms.js"></script>
+<script>
+(async () => {
+  const user = await initPage();
+  const KEY = 'eyl_progress_v1', RKEY = 'eyl_recent_v1';
+  const read = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
+  const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  let progress = read(KEY, {});
+  const rp = id => (progress[id] = progress[id] || { checked: {}, synced: {}, done: false });
+  let current = null;
+
+  if (!user) {
+    const b = $('#login-banner'); b.hidden = false;
+    b.innerHTML = '🔒 <a href="../connexion/">Connecte-toi</a> pour gagner des badges, ajouter des photos et retrouver tes amis. Ta progression est déjà sauvegardée sur cet appareil.';
+  }
+
+  function renderChips() {
+    $('#chips').innerHTML = ROOMS.map(r => {
+      const d = rp(r.id).done;
+      return `<button class="chip ${d ? 'done' : ''} ${current && current.id === r.id ? 'on' : ''}" data-id="${r.id}">${r.emoji} ${esc(r.nom)}${d ? ' ✓' : ''}</button>`;
+    }).join('');
+  }
+
+  function renderRoom() {
+    const r = current, p = rp(r.id);
+    const etapes = r.etapes.map((e, ei) => `<div class="etape" data-e="${ei}"><h3><span class="num">${ei + 1}</span>${esc(e.titre)}</h3><ul class="tasks">${e.taches.map((t, ti) => {
+      const k = ei + '-' + ti;
+      return `<li><label><input type="checkbox" data-k="${k}" ${p.checked[k] ? 'checked' : ''}><span>${esc(t)}</span></label></li>`;
+    }).join('')}</ul></div>`).join('');
+    const imp = `<div class="tip">💡 Sans perçage : adhésif double face (type bandes réutilisables), clip sur un bord, encoche ou simple pose. PLA en intérieur, PETG ou ASA pour la salle de bain et l'extérieur.</div>` +
+      r.imprimante.map(i => `<article class="idea"><h4>🖨️ ${esc(i.nom)}</h4><p>${esc(i.desc)}</p><span class="tag">Fixation : ${esc(i.fixation)}</span><p><a href="https://www.printables.com/search/models?q=${encodeURIComponent(i.recherche)}" target="_blank" rel="noopener">Chercher un modèle à imprimer →</a></p></article>`).join('');
+    const diy = `<div class="tip">🛠️ Pas d'imprimante 3D ? Ces alternatives font le même travail, souvent avec des objets récupérés.</div>` +
+      r.diy.map(i => `<article class="idea"><h4>🔧 ${esc(i.nom)}</h4><p>${esc(i.desc)}</p><span class="tag">Budget : ${esc(i.cout)}</span></article>`).join('');
+    const deco = `<div class="tip">🎨 Des idées à petit prix pour changer l'ambiance sans te ruiner.</div>` +
+      r.deco.map(i => `<article class="idea"><h4>✨ ${esc(i.nom)}</h4><p>${esc(i.desc)}</p><span class="tag">Budget : ${esc(i.budget)}</span></article>`).join('');
+    const photo = user
+      ? `<h3>📸 Ajoute ta photo</h3><p class="muted">Idéal pour un avant / après. Elle reste privée tant que tu ne changes pas la visibilité.</p>
+         <label class="field"><span>Photo</span><input type="file" id="photo-file" accept="image/*"></label>
+         <label class="field"><span>Légende (facultatif)</span><input type="text" id="photo-caption" maxlength="200"></label>
+         <label class="field"><span>Qui peut la voir ?</span><select id="photo-vis"><option value="private">Moi seulement</option><option value="friends">Mes amis</option><option value="public">Tous les membres</option></select></label>
+         <button class="btn" id="btn-upload">Envoyer la photo</button>`
+      : `<h3>📸 Photos</h3><p class="muted"><a href="../connexion/">Connecte-toi</a> pour ajouter tes photos avant/après.</p>`;
+    $('#room').hidden = false;
+    $('#room').innerHTML = `<div class="card">
+      <div class="room-head"><div class="big-emoji">${r.emoji}</div><div><h2>${esc(r.nom)}</h2><p class="muted">${esc(r.accroche)}</p></div></div>
+      <div class="progress"><div class="bar"><span id="bar"></span></div><b id="pct">0 %</b></div>
+      <div class="tabs" role="tablist">
+        <button class="tab" data-tab="plan" aria-selected="true">📋 Plan</button>
+        <button class="tab" data-tab="3d" aria-selected="false">🖨️ Impression 3D</button>
+        <button class="tab" data-tab="diy" aria-selected="false">🔧 Sans imprimante</button>
+        <button class="tab" data-tab="deco" aria-selected="false">✨ Déco pas chère</button>
+      </div>
+      <div class="panel" data-panel="plan">${etapes}</div>
+      <div class="panel" data-panel="3d" hidden>${imp}</div>
+      <div class="panel" data-panel="diy" hidden>${diy}</div>
+      <div class="panel" data-panel="deco" hidden>${deco}</div>
+      <div class="actions"><button class="btn" id="btn-finish" disabled>✅ Terminer cette pièce</button><button class="btn ghost" id="btn-reset">↺ Recommencer</button></div>
+    </div>
+    <div class="card">${photo}</div>`;
+    updateProgress();
+  }
+
+  function updateProgress() {
+    const p = rp(current.id);
+    const boxes = $$('#room input[type=checkbox]');
+    const done = boxes.filter(b => b.checked).length;
+    const pct = boxes.length ? Math.round(done / boxes.length * 100) : 0;
+    $('#bar').style.width = pct + '%'; $('#pct').textContent = pct + ' %';
+    $$('#room .etape').forEach(el => el.classList.toggle('ok', $$('input', el).every(i => i.checked)));
+    const fin = $('#btn-finish');
+    fin.disabled = p.done || pct < 100;
+    fin.textContent = p.done ? '✓ Pièce terminée' : '✅ Terminer cette pièce';
+  }
+
+  function selectRoom(id, scroll) {
+    current = ROOMS.find(r => r.id === id);
+    renderChips(); renderRoom();
+    if (scroll) $('#room').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function roll() {
+    const recent = read(RKEY, []);
+    let pool = ROOMS.filter(r => !recent.includes(r.id));
+    const todo = pool.filter(r => !rp(r.id).done);
+    if (todo.length) pool = todo;
+    if (!pool.length) pool = ROOMS;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const btn = $('#btn-roll'), slot = $('#slot');
+    btn.disabled = true;
+    let i = 0;
+    const t = setInterval(() => { slot.textContent = ROOMS[i++ % ROOMS.length].emoji; }, 90);
+    setTimeout(() => {
+      clearInterval(t);
+      slot.textContent = pick.emoji + ' ' + pick.nom;
+      btn.disabled = false;
+      write(RKEY, [pick.id, ...recent].slice(0, 3));
+      selectRoom(pick.id, true);
+    }, 1500);
+  }
+
+  async function onCheck(k, checked) {
+    const p = rp(current.id);
+    if (checked) p.checked[k] = true; else delete p.checked[k];
+    write(KEY, progress);
+    updateProgress();
+    const ei = +k.split('-')[0], e = current.etapes[ei];
+    const all = e.taches.every((_, ti) => p.checked[ei + '-' + ti]);
+    if (all && !p.synced[ei] && user) {
+      p.synced[ei] = true; write(KEY, progress);
+      await withBadgeDiff(user.id, () => sb.from('missions_done').insert({ user_id: user.id, tool: 'rangement', room: current.id, title: e.titre }));
+    }
+  }
+
+  async function finish() {
+    const p = rp(current.id);
+    p.done = true; write(KEY, progress); updateProgress(); renderChips();
+    if (!user) { showModal('<h2>🎉 Bravo !</h2><p>Pièce terminée. <a href="../connexion/">Crée un compte</a> pour gagner des badges et les montrer à tes amis.</p>'); return; }
+    let nouveau = false;
+    await withBadgeDiff(user.id, async () => {
+      const res = await sb.from('rooms_completed').upsert({ user_id: user.id, room: current.id }, { onConflict: 'user_id,room', ignoreDuplicates: true });
+      nouveau = !res.error; return res;
+    });
+    if (!$('#modal') || $('#modal').hidden) toast('Pièce terminée ! 🎉');
+  }
+
+  function reset() {
+    if (!confirm('Recommencer cette pièce ? Tes badges déjà gagnés sont conservés.')) return;
+    progress[current.id] = { checked: {}, synced: {}, done: false };
+    write(KEY, progress); renderChips(); renderRoom();
+  }
+
+  function compressImage(file, max = 1600) {
+    return new Promise((resolve, reject) => {
+      const img = new Image(), url = URL.createObjectURL(file);
+      img.onload = () => {
+        const r = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(b => b ? resolve(b) : reject(new Error('Compression impossible')), 'image/jpeg', 0.85);
+      };
+      img.onerror = () => reject(new Error('Image illisible'));
+      img.src = url;
+    });
+  }
+
+  async function upload() {
+    const file = $('#photo-file').files[0];
+    if (!file) return toast('Choisis une photo.');
+    const btn = $('#btn-upload'); btn.disabled = true; btn.textContent = 'Envoi…';
+    try {
+      const cap = $('#photo-caption').value.trim(), vis = $('#photo-vis').value;
+      const res = await withBadgeDiff(user.id, async () => {
+        const blob = await compressImage(file);
+        const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+        const up = await sb.storage.from('media').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+        if (up.error) return up;
+        return await sb.from('media').insert({ user_id: user.id, storage_path: path, room: current.id, caption: cap || null, visibility: vis });
+      });
+      if (res && !res.error) { toast('Photo ajoutée ✅ Retrouve-la sur ton profil.'); $('#photo-file').value = ''; $('#photo-caption').value = ''; }
+    } catch (e) { toast('Oups : ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = 'Envoyer la photo'; }
+  }
+
+  $('#btn-roll').onclick = roll;
+  $('#chips').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) selectRoom(b.dataset.id, true); });
+  $('#room').addEventListener('change', e => { const k = e.target.dataset && e.target.dataset.k; if (k) onCheck(k, e.target.checked); });
+  $('#room').addEventListener('click', e => {
+    const t = e.target.closest('[data-tab]');
+    if (t) {
+      $$('#room .tab').forEach(x => x.setAttribute('aria-selected', x === t));
+      $$('#room .panel').forEach(x => { x.hidden = x.dataset.panel !== t.dataset.tab; });
+      return;
+    }
+    if (e.target.id === 'btn-finish') finish();
+    if (e.target.id === 'btn-reset') reset();
+    if (e.target.id === 'btn-upload') upload();
+  });
+  renderChips();
+})();
+</script>
+</body>
+</html>

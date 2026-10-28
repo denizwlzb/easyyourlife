@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Profil – EasyYourLife</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-base="../">
+<header id="nav"></header>
+<main class="wrap" id="main"><p class="muted">Chargement…</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../assets/app.js"></script>
+<script>
+(async () => {
+  const VIS = { private: '🔒 Privée', friends: '👥 Amis', public: '🌍 Tous' };
+  const ROOMNAMES = { chambre: 'Chambre', salon: 'Salon', cuisine: 'Cuisine', salle_de_bain: 'Salle de bain', entree: 'Entrée', bureau: 'Bureau', balcon: 'Balcon' };
+  const main = $('#main');
+
+  sb.auth.onAuthStateChange(async ev => {
+    if (ev === 'PASSWORD_RECOVERY') {
+      const p = prompt('Choisis ton nouveau mot de passe (8 caractères minimum)');
+      if (p && p.length >= 8) { const { error } = await sb.auth.updateUser({ password: p }); toast(error ? 'Oups : ' + error.message : 'Mot de passe changé ✅'); }
+      else if (p) toast('Mot de passe trop court.');
+    }
+  });
+
+  const user = await initPage();
+  if (!user) { location.replace('../connexion/'); return; }
+  const me = user.id;
+  const target = new URLSearchParams(location.search).get('u');
+
+  const q = target
+    ? sb.from('profiles').select('*').eq('username', target).maybeSingle()
+    : sb.from('profiles').select('*').eq('id', me).maybeSingle();
+  const { data: profile } = await q;
+  if (!profile) { main.innerHTML = '<div class="card"><h2>Profil introuvable</h2><p class="muted">Ce pseudo n\'existe pas.</p><a class="btn" href="./">Retour à mon profil</a></div>'; return; }
+  const isMe = profile.id === me;
+  document.title = `${profile.username} – EasyYourLife`;
+
+  let friendships = [], names = {};
+  async function loadFriends() {
+    const { data } = await sb.from('friendships').select('*').or(`requester_id.eq.${me},addressee_id.eq.${me}`);
+    friendships = data || [];
+    const ids = [...new Set(friendships.map(f => f.requester_id === me ? f.addressee_id : f.requester_id))];
+    names = {};
+    if (ids.length) {
+      const { data: ps } = await sb.from('profiles').select('id,username').in('id', ids);
+      (ps || []).forEach(p => { names[p.id] = p.username; });
+    }
+  }
+  const relation = otherId => friendships.find(f => f.requester_id === otherId || f.addressee_id === otherId);
+  await loadFriends();
+
+  const [bc, ub, rc, mc, md] = await Promise.all([
+    sb.from('badges').select('*').order('sort_order'),
+    sb.from('user_badges').select('badge_code').eq('user_id', profile.id),
+    sb.from('rooms_completed').select('room').eq('user_id', profile.id),
+    sb.from('missions_done').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
+    sb.from('media').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(24)
+  ]);
+  const catalog = bc.data || [];
+  const earned = new Set((ub.data || []).map(r => r.badge_code));
+  const rooms = (rc.data || []).map(r => r.room);
+  const nbMissions = mc.count || 0;
+  let medias = md.data || [];
+
+  const rel = isMe ? null : relation(profile.id);
+  const isFriend = isMe || (rel && rel.status === 'accepted');
+
+  async function renderPhotos() {
+    const el = $('#photos'); if (!el) return;
+    if (!medias.length) { el.innerHTML = `<p class="muted">${isMe ? 'Aucune photo pour le moment. Ajoute-en depuis l\'outil « Ranger & décorer ».' : 'Aucune photo visible.'}</p>`; return; }
+    const { data: urls } = await sb.storage.from('media').createSignedUrls(medias.map(m => m.storage_path), 3600);
+    const map = {}; (urls || []).forEach(u => { if (u.signedUrl) map[u.path] = u.signedUrl; });
+    el.innerHTML = '<div class="gallery">' + medias.map(m => `<figure>
+      ${map[m.storage_path] ? `<img loading="lazy" src="${esc(map[m.storage_path])}" alt="${esc(m.caption || 'Photo')}">` : ''}
+      <figcaption>${m.room ? `<b>${esc(ROOMNAMES[m.room] || m.room)}</b><br>` : ''}${esc(m.caption || '')}
+      ${isMe ? `<div style="margin-top:6px"><select data-vis="${esc(m.id)}">${Object.entries(VIS).map(([v, l]) => `<option value="${v}" ${m.visibility === v ? 'selected' : ''}>${l}</option>`).join('')}</select> <button class="btn small danger" data-del="${esc(m.id)}">Supprimer</button></div>` : ''}
+      </figcaption></figure>`).join('') + '</div>';
+  }
+
+  function friendsHTML() {
+    const recues = friendships.filter(f => f.status === 'pending' && f.addressee_id === me);
+    const envoyees = friendships.filter(f => f.status === 'pending' && f.requester_id === me);
+    const amis = friendships.filter(f => f.status === 'accepted');
+    const other = f => f.requester_id === me ? f.addressee_id : f.requester_id;
+    const nom = f => esc(names[other(f)] || '…');
+    return `<h3>👥 Mes amis</h3>
+      <form id="search-form" class="row" style="border:0"><input type="search" id="search-q" placeholder="Chercher un pseudo" maxlength="24" style="flex:1"><button class="btn small" type="submit">Chercher</button></form>
+      <div id="search-res"></div>
+      ${recues.length ? `<h4 style="margin-top:14px">Demandes reçues</h4>${recues.map(f => `<div class="row"><a href="?u=${encodeURIComponent(names[other(f)] || '')}">${nom(f)}</a><div class="btns"><button class="btn small" data-act="accept" data-id="${esc(f.id)}">Accepter</button><button class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Refuser</button></div></div>`).join('')}` : ''}
+      ${envoyees.length ? `<h4 style="margin-top:14px">Demandes envoyées</h4>${envoyees.map(f => `<div class="row"><span>${nom(f)}</span><button class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Annuler</button></div>`).join('')}` : ''}
+      <h4 style="margin-top:14px">Amis (${amis.length})</h4>
+      ${amis.length ? amis.map(f => `<div class="row"><a href="?u=${encodeURIComponent(names[other(f)] || '')}">${nom(f)}</a><button class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Retirer</button></div>`).join('') : '<p class="muted">Pas encore d\'amis. Cherche un pseudo ci-dessus ou partage le lien du site.</p>'}`;
+  }
+
+  function relationButton() {
+    if (isMe) return '';
+    if (!rel) return `<button class="btn" id="btn-add" data-id="${esc(profile.id)}">➕ Ajouter en ami</button>`;
+    if (rel.status === 'accepted') return '<span class="tag">✓ Amis</span>';
+    if (rel.requester_id === me) return '<span class="tag">Demande envoyée</span>';
+    return `<button class="btn" data-act="accept" data-id="${esc(rel.id)}">Accepter sa demande</button>`;
+  }
+
+  function render() {
+    main.innerHTML = `
+    <div class="card">
+      <div class="profile-head">
+        <div class="avatar">${esc(profile.username.charAt(0).toUpperCase())}</div>
+        <div style="flex:1;min-width:200px"><h1 style="margin:0">${esc(profile.username)}</h1><p class="muted" style="margin:0">${esc(profile.bio || (isMe ? 'Ajoute une petite description ci-dessous.' : ''))}</p></div>
+        <div>${relationButton()}</div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>${isFriend ? nbMissions : '–'}</b>missions</div>
+        <div class="stat"><b>${isFriend ? rooms.length : '–'}</b>pièces</div>
+        <div class="stat"><b>${isFriend ? earned.size : '–'}</b>badges</div>
+      </div>
+    </div>
+    ${isFriend ? '' : '<div class="banner">🔒 Deviens ami avec ce membre pour voir ses badges, ses pièces et ses photos partagées.</div>'}
+    ${isFriend ? `<div class="card"><h3>🏅 Badges</h3><div class="badge-grid">${catalog.map(b => `<div class="badge ${earned.has(b.code) ? '' : 'locked'}"><div class="ico">${esc(b.icon)}</div><b>${esc(b.name)}</b><small>${esc(b.description)}</small></div>`).join('')}</div></div>
+    <div class="card"><h3>🏠 Pièces terminées</h3>${rooms.length ? `<div class="chips" style="justify-content:flex-start">${rooms.map(r => `<span class="chip done">${esc(ROOMNAMES[r] || r)} ✓</span>`).join('')}</div>` : '<p class="muted">Aucune pièce terminée pour le moment.</p>'}</div>` : ''}
+    <div class="card"><h3>📸 Photos</h3><div id="photos"></div></div>
+    ${isMe ? `<div class="card" id="friends">${friendsHTML()}</div>
+    <div class="card"><h3>✏️ Modifier mon profil</h3>
+      <form id="edit-form">
+        <label class="field"><span>Pseudo</span><input type="text" id="e-pseudo" value="${esc(profile.username)}" maxlength="24"></label>
+        <label class="field"><span>Description (200 caractères max)</span><textarea id="e-bio" rows="2" maxlength="200">${esc(profile.bio || '')}</textarea></label>
+        <button class="btn" type="submit">Enregistrer</button>
+      </form></div>` : ''}`;
+    renderPhotos();
+  }
+  render();
+
+  // ----- Actions -----
+  main.addEventListener('click', async e => {
+    const add = e.target.closest('#btn-add');
+    if (add) { await sendRequest(add.dataset.id); return; }
+    const act = e.target.closest('[data-act]');
+    if (act) {
+      const id = act.dataset.id;
+      if (act.dataset.act === 'accept') {
+        await withBadgeDiff(me, () => sb.from('friendships').update({ status: 'accepted' }).eq('id', id));
+      } else {
+        await sb.from('friendships').delete().eq('id', id);
+      }
+      await loadFriends(); location.reload();
+      return;
+    }
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      if (!confirm('Supprimer cette photo ?')) return;
+      const m = medias.find(x => x.id === del.dataset.del); if (!m) return;
+      await sb.storage.from('media').remove([m.storage_path]);
+      const { error } = await sb.from('media').delete().eq('id', m.id);
+      if (error) return toast('Oups : ' + error.message);
+      medias = medias.filter(x => x.id !== m.id); renderPhotos(); toast('Photo supprimée.');
+    }
+  });
+  main.addEventListener('change', async e => {
+    const id = e.target.dataset && e.target.dataset.vis;
+    if (!id) return;
+    const { error } = await sb.from('media').update({ visibility: e.target.value }).eq('id', id);
+    toast(error ? 'Oups : ' + error.message : 'Visibilité mise à jour ✅');
+  });
+
+  async function sendRequest(otherId) {
+    const { error } = await sb.from('friendships').insert({ requester_id: me, addressee_id: otherId });
+    if (error) return toast(error.code === '23505' ? 'Une demande existe déjà.' : 'Oups : ' + error.message);
+    toast('Demande envoyée ✅'); location.reload();
+  }
+
+  main.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (e.target.id === 'search-form') {
+      const term = $('#search-q').value.replace(/[^A-Za-z0-9_]/g, '');
+      if (term.length < 2) return toast('Entre au moins 2 caractères.');
+      const { data } = await sb.from('profiles').select('id,username').ilike('username', `%${term}%`).neq('id', me).limit(8);
+      const res = data || [];
+      $('#search-res').innerHTML = res.length ? res.map(p => {
+        const r = relation(p.id);
+        const btn = !r ? `<button class="btn small" data-add="${esc(p.id)}">Ajouter</button>` : `<span class="tag">${r.status === 'accepted' ? 'Ami' : 'En attente'}</span>`;
+        return `<div class="row"><a href="?u=${encodeURIComponent(p.username)}">${esc(p.username)}</a>${btn}</div>`;
+      }).join('') : '<p class="muted">Aucun membre trouvé.</p>';
+      $$('#search-res [data-add]').forEach(b => { b.onclick = () => sendRequest(b.dataset.add); });
+    }
+    if (e.target.id === 'edit-form') {
+      const username = $('#e-pseudo').value.trim(), bio = $('#e-bio').value.trim();
+      if (!/^[A-Za-z0-9_]{3,24}$/.test(username)) return toast('Pseudo invalide (3 à 24 lettres, chiffres ou _).');
+      const { error } = await sb.from('profiles').update({ username, bio: bio || null }).eq('id', me);
+      if (error) return toast(error.code === '23505' ? 'Ce pseudo est déjà pris.' : 'Oups : ' + error.message);
+      toast('Profil mis à jour ✅'); setTimeout(() => { location.href = './'; }, 600);
+    }
+  });
+})();
+</script>
+</body>
+</html>
