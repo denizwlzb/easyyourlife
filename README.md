@@ -13,7 +13,8 @@ connexion/            Inscription et connexion
 rangement/            Outil 1 : Ranger & décorer
 profil/               Profil, badges, photos et amis
 badges/               Catalogue des badges
-assets/style.css      Styles
+assets/style.css      Styles et les 7 thèmes
+assets/theme.js       Choix du thème, couleur d'accent, taille du texte, animations
 assets/app.js         Connexion Supabase + fonctions communes + liste des outils
 assets/rooms.js       Pièces, étapes et idées
 ```
@@ -38,3 +39,13 @@ Dans **Authentication → Providers → Email**, tu peux désactiver « Confirm 
 - La clé utilisée dans `assets/app.js` est la clé **anon** : elle est faite pour être publique.
 - Les données sont protégées par les règles de sécurité (RLS) de la base : chacun ne voit que ses données, et celles de ses amis acceptés.
 - Ne mets **jamais** la clé `service_role` dans ce dépôt.
+
+## Thèmes et personnalisation
+
+Le bouton « 🎨 Style » de la barre du haut ouvre le panneau de personnalisation :
+7 thèmes (Atelier, Nuit néon, Sakura, Forêt, Océan, Brut, Arcade) plus un mode automatique,
+une couleur d'accent au choix, la taille du texte et l'option d'arrêter les animations.
+Les choix sont gardés sur l'appareil (localStorage).
+
+Pour ajouter un thème : un bloc `:root[data-theme="mon-theme"]` dans `assets/style.css`
+et une entrée dans la liste `THEMES` de `assets/theme.js`.

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Profil – EasyYourLife</title>
 <link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/theme.js"></script>
 </head>
 <body data-base="../">
 <header id="nav"></header>
@@ -107,7 +108,7 @@
     main.innerHTML = `
     <div class="card">
       <div class="profile-head">
-        <div class="avatar">${esc(profile.username.charAt(0).toUpperCase())}</div>
+        <div class="avatar" style="--h:${hueOf(profile.username)}">${esc(profile.username.charAt(0).toUpperCase())}</div>
         <div style="flex:1;min-width:200px"><h1 style="margin:0">${esc(profile.username)}</h1><p class="muted" style="margin:0">${esc(profile.bio || (isMe ? 'Ajoute une petite description ci-dessous.' : ''))}</p></div>
         <div>${relationButton()}</div>
       </div>

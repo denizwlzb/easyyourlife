@@ -7,6 +7,7 @@ const BASE = document.body.dataset.base || './';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const hueOf = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 
 // ====== LISTE DES OUTILS : pour ajouter un outil, ajoute simplement une ligne ici ======
 const TOOLS = [
@@ -16,33 +17,58 @@ const TOOLS = [
 
 function toast(msg, ms = 3200) {
   let t = $('#toast');
-  if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
   t.textContent = msg; t.hidden = false;
   clearTimeout(toast._t); toast._t = setTimeout(() => { t.hidden = true; }, ms);
 }
 
-function showModal(html) {
+function confetti(n = 48) {
+  if (document.documentElement.dataset.motion === 'off' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cs = getComputedStyle(document.documentElement);
+  const colors = ['--accent', '--tape', '--good', '--ink'].map(v => cs.getPropertyValue(v).trim()).filter(Boolean);
+  const box = document.createElement('div'); box.className = 'confetti'; document.body.appendChild(box);
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i'), s = 6 + Math.random() * 8;
+    p.style.cssText = `left:${Math.random() * 100}vw;width:${s}px;height:${s * 1.4}px;background:${colors[i % colors.length]}`;
+    box.appendChild(p);
+    p.animate([
+      { transform: 'translateY(-10vh) rotate(0deg)', opacity: 1 },
+      { transform: `translate(${(Math.random() - .5) * 180}px,105vh) rotate(${Math.random() * 720}deg)`, opacity: 1 }
+    ], { duration: 1600 + Math.random() * 1400, delay: Math.random() * 400, easing: 'cubic-bezier(.2,.6,.4,1)', fill: 'forwards' });
+  }
+  setTimeout(() => box.remove(), 3700);
+}
+
+function showModal(html, celebrate = false) {
   let m = $('#modal');
   if (!m) { m = document.createElement('div'); m.id = 'modal'; m.className = 'modal'; document.body.appendChild(m); }
   m.innerHTML = `<div class="modal-box" role="dialog" aria-modal="true">${html}<button class="btn" id="modal-close">Super !</button></div>`;
   m.hidden = false;
   $('#modal-close').onclick = () => { m.hidden = true; };
+  $('#modal-close').focus();
   m.onclick = e => { if (e.target === m) m.hidden = true; };
+  if (celebrate) confetti();
 }
 
 function renderNav(user) {
   const el = $('#nav'); if (!el) return;
+  const path = location.pathname;
+  const cur = seg => path.includes('/' + seg) ? ' aria-current="page"' : '';
   el.innerHTML = `<div class="nav-in">
     <a class="brand" href="${BASE}index.html">✨ EasyYourLife</a>
-    <nav>
-      <a href="${BASE}rangement/">Ranger</a>
-      <a href="${BASE}badges/">Badges</a>
+    <nav aria-label="Navigation principale">
+      <a class="nl" href="${BASE}rangement/"${cur('rangement/')}>Ranger</a>
+      <a class="nl" href="${BASE}badges/"${cur('badges/')}>Badges</a>
+      ${user ? `<a class="nl" href="${BASE}profil/"${cur('profil/')}>Mon profil</a>` : ''}
+      <button type="button" class="nl" id="btn-style" aria-haspopup="dialog">🎨 Style</button>
       ${user
-        ? `<a href="${BASE}profil/">Mon profil</a><button class="link" id="btn-logout">Déconnexion</button>`
+        ? `<button type="button" class="nl" id="btn-logout">Déconnexion</button>`
         : `<a class="btn small" href="${BASE}connexion/">Connexion</a>`}
     </nav></div>`;
   const out = $('#btn-logout');
   if (out) out.onclick = async () => { await sb.auth.signOut(); location.href = BASE + 'index.html'; };
+  const st = $('#btn-style');
+  if (st) st.onclick = () => { if (window.EYL_THEME) window.EYL_THEME.open(); };
 }
 
 async function initPage() {
@@ -54,8 +80,8 @@ async function initPage() {
 
 function renderTools(el) {
   el.innerHTML = TOOLS.map(t => t.statut === 'dispo'
-    ? `<a class="tool" href="${BASE}${t.href}"><div class="ico">${t.emoji}</div><h3>${esc(t.nom)}</h3><p class="muted">${esc(t.desc)}</p><span class="pill">Disponible</span></a>`
-    : `<div class="tool soon"><div class="ico">${t.emoji}</div><h3>${esc(t.nom)}</h3><p class="muted">${esc(t.desc)}</p><span class="pill">Bientôt</span></div>`
+    ? `<a class="tool" href="${BASE}${t.href}"><span class="tape">${esc(t.nom)}</span><div class="ico">${t.emoji}</div><p>${esc(t.desc)}</p><span class="pill">Disponible</span></a>`
+    : `<div class="tool soon"><span class="tape">${esc(t.nom)}</span><div class="ico">${t.emoji}</div><p>${esc(t.desc)}</p><span class="pill">Bientôt</span></div>`
   ).join('');
 }
 
@@ -68,7 +94,7 @@ async function showBadgePopup(codes) {
   const { data } = await sb.from('badges').select('*').in('code', codes).order('sort_order');
   const list = data || [];
   const items = list.map(b => `<div class="pop-badge"><div class="ico">${esc(b.icon)}</div><div><b>${esc(b.name)}</b><br><small>${esc(b.description)}</small></div></div>`).join('');
-  showModal(`<h2>🎉 Nouveau badge${list.length > 1 ? 's' : ''} !</h2>${items}`);
+  showModal(`<h2>Nouveau badge${list.length > 1 ? 's' : ''} !</h2>${items}`, true);
 }
 
 // Exécute une action puis affiche une fenêtre de félicitations si un badge a été gagné

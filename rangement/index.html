@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ranger & décorer – EasyYourLife</title>
 <link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/theme.js"></script>
 </head>
 <body data-base="../">
 <header id="nav"></header>
@@ -48,7 +49,7 @@
     const r = current, p = rp(r.id);
     const etapes = r.etapes.map((e, ei) => `<div class="etape" data-e="${ei}"><h3><span class="num">${ei + 1}</span>${esc(e.titre)}</h3><ul class="tasks">${e.taches.map((t, ti) => {
       const k = ei + '-' + ti;
-      return `<li><label><input type="checkbox" data-k="${k}" ${p.checked[k] ? 'checked' : ''}><span>${esc(t)}</span></label></li>`;
+      return `<li><label><input type="checkbox" class="chk" data-k="${k}" ${p.checked[k] ? 'checked' : ''}><span>${esc(t)}</span></label></li>`;
     }).join('')}</ul></div>`).join('');
     const imp = `<div class="tip">💡 Sans perçage : adhésif double face (type bandes réutilisables), clip sur un bord, encoche ou simple pose. PLA en intérieur, PETG ou ASA pour la salle de bain et l'extérieur.</div>` +
       r.imprimante.map(i => `<article class="idea"><h4>🖨️ ${esc(i.nom)}</h4><p>${esc(i.desc)}</p><span class="tag">Fixation : ${esc(i.fixation)}</span><p><a href="https://www.printables.com/search/models?q=${encodeURIComponent(i.recherche)}" target="_blank" rel="noopener">Chercher un modèle à imprimer →</a></p></article>`).join('');
@@ -66,7 +67,7 @@
     $('#room').hidden = false;
     $('#room').innerHTML = `<div class="card">
       <div class="room-head"><div class="big-emoji">${r.emoji}</div><div><h2>${esc(r.nom)}</h2><p class="muted">${esc(r.accroche)}</p></div></div>
-      <div class="progress"><div class="bar"><span id="bar"></span></div><b id="pct">0 %</b></div>
+      <div class="progress"><div class="segs" id="segs" aria-hidden="true">${r.etapes.map(() => '<i><b></b></i>').join('')}</div><b id="pct">0 %</b></div>
       <div class="tabs" role="tablist">
         <button class="tab" data-tab="plan" aria-selected="true">📋 Plan</button>
         <button class="tab" data-tab="3d" aria-selected="false">🖨️ Impression 3D</button>
@@ -88,7 +89,8 @@
     const boxes = $$('#room input[type=checkbox]');
     const done = boxes.filter(b => b.checked).length;
     const pct = boxes.length ? Math.round(done / boxes.length * 100) : 0;
-    $('#bar').style.width = pct + '%'; $('#pct').textContent = pct + ' %';
+    $('#pct').textContent = pct + ' %';
+    $$('#segs i b').forEach((b, ei) => { const es = current.etapes[ei]; const n = es.taches.filter((_, ti) => p.checked[ei + '-' + ti]).length; b.style.width = Math.round(n / es.taches.length * 100) + '%'; });
     $$('#room .etape').forEach(el => el.classList.toggle('ok', $$('input', el).every(i => i.checked)));
     const fin = $('#btn-finish');
     fin.disabled = p.done || pct < 100;
@@ -136,7 +138,7 @@
 
   async function finish() {
     const p = rp(current.id);
-    p.done = true; write(KEY, progress); updateProgress(); renderChips();
+    p.done = true; write(KEY, progress); updateProgress(); renderChips(); confetti();
     if (!user) { showModal('<h2>🎉 Bravo !</h2><p>Pièce terminée. <a href="../connexion/">Crée un compte</a> pour gagner des badges et les montrer à tes amis.</p>'); return; }
     let nouveau = false;
     await withBadgeDiff(user.id, async () => {
@@ -201,6 +203,9 @@
     if (e.target.id === 'btn-upload') upload();
   });
   renderChips();
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('piece') && ROOMS.some(r => r.id === qs.get('piece'))) selectRoom(qs.get('piece'), false);
+  else if (qs.get('tirage')) roll();
 })();
 </script>
 </body>

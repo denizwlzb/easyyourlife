@@ -3,30 +3,48 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>EasyYourLife – des mini-outils pour se simplifier la vie</title>
-<meta name="description" content="Des petits outils gratuits pour se simplifier la vie : ranger, décorer, et gagner des badges avec ses amis.">
+<title>EasyYourLife – moins de bazar, plus de vie</title>
+<meta name="description" content="Des petits outils gratuits pour ranger, décorer et simplifier le quotidien. Gagne des badges et montre-les à tes amis.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✨</text></svg>">
 <link rel="stylesheet" href="assets/style.css">
+<script src="assets/theme.js"></script>
 </head>
 <body data-base="./">
 <header id="nav"></header>
 <main class="wrap">
   <section class="hero">
-    <h1>Des petits outils pour te simplifier la vie ✨</h1>
-    <p>Choisis un outil, suis le plan, gagne des badges et montre tes accomplissements à tes amis.</p>
+    <h1>Moins de bazar, plus de vie.</h1>
+    <p class="lead">Des petits outils gratuits pour ranger, décorer et simplifier le quotidien. Suis le plan, gagne des badges, montre-les à tes amis.</p>
+    <div class="cta-row">
+      <a class="btn big" href="rangement/?tirage=1">🎲 Tirer une pièce au hasard</a>
+      <a class="btn big ghost" href="badges/">Voir les badges</a>
+    </div>
   </section>
+
+  <h2 class="section-title">Choisis ta pièce</h2>
+  <section id="wall" class="wall" aria-label="Les pièces de la maison"></section>
+
+  <h2 class="section-title">Les outils</h2>
   <section id="tools" class="grid" aria-label="Liste des outils"></section>
+
   <section class="card" id="cta"></section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/rooms.js"></script>
 <script>
 (async () => {
   const user = await initPage();
+  let progress = {};
+  try { progress = JSON.parse(localStorage.getItem('eyl_progress_v1')) || {}; } catch (e) {}
+  $('#wall').innerHTML = ROOMS.map((r, i) => {
+    const done = progress[r.id] && progress[r.id].done;
+    return `<a class="drawer ${done ? 'done' : ''}" style="--i:${i}" href="rangement/?piece=${r.id}"><span class="handle"></span><span class="emoji">${r.emoji}</span><span class="tape">${esc(r.nom)}${done ? ' ✓' : ''}</span></a>`;
+  }).join('');
   renderTools($('#tools'));
   $('#cta').innerHTML = user
-    ? '<h2>Content de te revoir 👋</h2><p class="muted">Retrouve tes badges et tes amis sur ton profil.</p><a class="btn" href="profil/">Voir mon profil</a>'
-    : '<h2>Crée ton compte gratuit</h2><p class="muted">Gagne des badges, ajoute tes amis et partage tes photos avant/après.</p><a class="btn" href="connexion/">Commencer</a>';
+    ? '<h2>Content de te revoir 👋</h2><p class="muted">Retrouve tes badges, tes photos et tes amis sur ton profil.</p><a class="btn" href="profil/">Voir mon profil</a>'
+    : '<h2>Crée ton compte gratuit</h2><p class="muted">Gagne des badges, ajoute tes amis et partage tes photos avant/après.</p><a class="btn" href="connexion/">Créer mon compte</a>';
 })();
 </script>
 </body>
