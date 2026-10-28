@@ -57,3 +57,10 @@ Pour ajouter un thème : un bloc `:root[data-theme="nom"]` dans `assets/style.cs
 
 - La clé de `assets/app.js` est la clé **anon** (publique par conception). Les données sont protégées par les règles RLS de la base.
 - Ne mets jamais la clé `service_role` ni une clé d'IA dans ce dépôt : elles vivent uniquement dans les secrets Supabase.
+
+## Anti-cache (important)
+
+GitHub Pages garde les fichiers 10 minutes en cache. Pour qu'une page neuve ne se retrouve jamais avec un ancien script,
+chaque fichier de `assets/` est appelé avec `?v=<empreinte>` dans les pages HTML. **Quand tu modifies un fichier de `assets/`,
+mets à jour ce numéro** dans les pages HTML (il change à chaque modification du contenu). Un filet de sécurité dans `assets/app.js`
+affiche un message clair avec un bouton « Recharger » si une page reste bloquée sur « Chargement… ».

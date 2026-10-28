@@ -1,3 +1,19 @@
+/* Filet de sécurité : une erreur ou un blocage ne doit jamais laisser « Chargement… » sans explication. */
+(function () {
+  function stuck() { var m = document.getElementById('main'); return m && m.textContent.trim() === 'Chargement…' ? m : null; }
+  function fatal(err, slow) {
+    var m = stuck(); if (!m) return;
+    var raw = String((err && err.message) || err || '');
+    var msg = slow ? "Ça prend plus de temps que prévu. Vérifie ta connexion, puis recharge la page."
+      : /createClient|supabase/i.test(raw) ? "Le service de comptes n'a pas pu se charger (connexion ou bloqueur de publicités). Recharge la page."
+      : "Une erreur est survenue : " + raw.replace(/[<>&]/g, '');
+    m.innerHTML = '<div class="card empty"><span class="big-emoji">⚠️</span><h2>La page n\'a pas pu se charger</h2><p class="muted">' + msg + '</p><button class="btn" onclick="location.reload()">Recharger</button></div>';
+  }
+  window.addEventListener('error', function (e) { console.error(e.error || e.message); fatal(e.error || e.message); });
+  window.addEventListener('unhandledrejection', function (e) { console.error(e.reason); fatal(e.reason); });
+  setTimeout(function () { fatal(null, true); }, 12000);
+})();
+
 const SUPABASE_URL = 'https://nltqjkmwhozowgdbopwh.supabase.co';
 // Clé publique (anon) : elle peut être visible, la sécurité repose sur les règles RLS de la base.
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sdHFqa213aG96b3dnZGJvcHdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMyMTYxMzQsImV4cCI6MjEwODc5MjEzNH0.SzY_14tPhFAdPQd6kCbDaZIEDHZCgWB1NbRcrdCYKgk';
