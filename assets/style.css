@@ -376,3 +376,111 @@ input[type=color]{width:52px;height:38px;padding:2px;background:var(--surface);b
 .story-prev{left:0}.story-next{right:0}
 .profile-top{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
 .status-pill{display:inline-block;margin-top:4px;background:var(--tape);color:var(--tape-ink);border:2px solid var(--line);border-radius:99px;padding:0 .6rem;font-size:.75rem;font-weight:800}
+
+
+/* ===== Divers ===== */
+html{background-color:var(--bg)}
+.tabbar .i svg{display:block;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabbar .avatar{width:26px;height:26px;font-size:.8rem;border-width:1.5px}
+.nophoto{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;aspect-ratio:16/9;background:var(--surface-2);border-top:var(--bw) solid var(--line);border-bottom:var(--bw) solid var(--line)}
+.nophoto .big-emoji{font-size:3rem}
+.optional{display:inline-block;margin-left:6px;font-size:.78rem;font-weight:700;color:var(--muted)}
+details.fold>summary{cursor:pointer;font-weight:800;list-style:none}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold[open]>summary{margin-bottom:10px}
+
+/* ===== Thème iOS : comme une vraie appli ===== */
+:root[data-theme="ios"]{
+  --bg:#f2f2f7; --hole:transparent; --surface:#ffffff; --surface-2:#f2f2f7;
+  --ink:#000000; --muted:#6b6b70; --line:rgba(60,60,67,.22);
+  --accent:#0a6cf0; --accent-ink:#ffffff; --accent-text:#0856c0; --tape:#ffcc00; --tape-ink:#000000;
+  --good:#34c759; --bad:#ff3b30;
+  --r:14px; --bw:.5px;
+  --sh:none; --sh-lg:none; --sh-press:none;
+  --font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",system-ui,sans-serif;
+  --font-body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;
+  --display-weight:700; --display-tracking:-.022em; --display-lh:1.1;
+  --h1:clamp(1.9rem,8vw,2.125rem);
+  --bg-extra:linear-gradient(transparent,transparent);
+}
+@media (prefers-color-scheme:dark){
+  :root[data-theme="ios"]{--bg:#000000;--surface:#1c1c1e;--surface-2:#2c2c2e;--ink:#ffffff;--muted:#a1a1a6;--line:rgba(84,84,88,.6);--accent:#0a74e8;--accent-text:#5aa9ff;--tape:#ffd60a;--good:#30d158;--bad:#ff453a}
+}
+:root[data-theme="ios"] body{-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+:root[data-theme="ios"] .wrap{max-width:640px;padding-top:10px}
+:root[data-theme="ios"] .hero{padding-top:6px}
+:root[data-theme="ios"] .hero h1{max-width:none}
+:root[data-theme="ios"] .lead{font-size:1.05rem}
+:root[data-theme="ios"] #nav{view-transition-name:appbar;background:color-mix(in srgb,var(--surface) 72%,transparent);-webkit-backdrop-filter:saturate(180%) blur(22px);backdrop-filter:saturate(180%) blur(22px);border-bottom:.5px solid var(--line)}
+:root[data-theme="ios"] .nav-in{max-width:640px;padding:8px 16px}
+:root[data-theme="ios"] .brand{background:none;border:0;padding:0;transform:none;text-shadow:none;color:var(--ink);font-size:1.05rem}
+:root[data-theme="ios"] .nav-links,:root[data-theme="ios"] .hide-sm{display:none!important}
+:root[data-theme="ios"] .icon-btn{background:var(--surface-2);border:0;box-shadow:none;border-radius:50%;width:36px;height:36px;font-size:1.05rem;color:var(--ink)}
+:root[data-theme="ios"] .icon-btn:hover{transform:none;box-shadow:none}
+:root[data-theme="ios"] .tabbar{view-transition-name:tabbar;display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;justify-content:space-around;background:color-mix(in srgb,var(--surface) 78%,transparent);-webkit-backdrop-filter:saturate(180%) blur(22px);backdrop-filter:saturate(180%) blur(22px);border-top:.5px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
+:root[data-theme="ios"] .tabbar a{flex:1;max-width:120px;display:flex;flex-direction:column;align-items:center;gap:2px;text-decoration:none;color:var(--muted);font-size:.66rem;font-weight:600;padding:4px 0;border-radius:0;background:none}
+:root[data-theme="ios"] .tabbar a[aria-current=page]{color:var(--accent-text);background:none}
+:root[data-theme="ios"] .tabbar a.create .i{background:none;border:0;padding:0;color:inherit}
+:root[data-theme="ios"] .card{border:0;border-radius:16px;padding:16px;box-shadow:none;margin-bottom:16px}
+:root[data-theme="ios"] .btn{border:0;box-shadow:none;border-radius:12px;font-family:var(--font-body);font-weight:600;padding:.8rem 1.1rem;transition:opacity .15s}
+:root[data-theme="ios"] .btn:hover{transform:none;box-shadow:none}
+:root[data-theme="ios"] .btn:active{opacity:.55;transform:none;box-shadow:none}
+:root[data-theme="ios"] .btn.ghost{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent-text)!important}
+:root[data-theme="ios"] .btn.danger{background:var(--bad);color:#fff!important}
+:root[data-theme="ios"] .btn.small{border-radius:10px;padding:.45rem .85rem}
+:root[data-theme="ios"] .btn.big{width:100%;border-radius:14px;font-size:1.05rem}
+:root[data-theme="ios"] input[type=text],:root[data-theme="ios"] input[type=email],:root[data-theme="ios"] input[type=password],:root[data-theme="ios"] input[type=search],:root[data-theme="ios"] input[type=file],:root[data-theme="ios"] select,:root[data-theme="ios"] textarea{border:0;background:var(--surface-2);border-radius:10px;padding:.8rem .9rem}
+:root[data-theme="ios"] .seg{background:rgba(118,118,128,.16);padding:2px;border-radius:10px;gap:2px}
+:root[data-theme="ios"] .seg button{border:0;background:transparent;border-radius:8px;padding:.45rem .6rem;color:var(--ink);box-shadow:none}
+:root[data-theme="ios"] .seg button[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+:root[data-theme="ios"] .tab,:root[data-theme="ios"] .chip{border:0;background:rgba(118,118,128,.16);color:var(--ink)}
+:root[data-theme="ios"] .tab[aria-selected=true],:root[data-theme="ios"] .chip.on{background:var(--accent);color:var(--accent-ink);box-shadow:none}
+:root[data-theme="ios"] .chip.done{border:0}
+:root[data-theme="ios"] .step{border:0;background:rgba(118,118,128,.16);color:var(--muted)}
+:root[data-theme="ios"] .step[aria-current=step]{background:var(--accent);color:var(--accent-ink)}
+:root[data-theme="ios"] .step .n{border:0}
+:root[data-theme="ios"] .chk{border-radius:50%;border:1.5px solid #c7c7cc;width:24px;height:24px}
+:root[data-theme="ios"] .chk:checked{border-color:var(--accent)}
+:root[data-theme="ios"] .tape{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent-text);border:0;transform:none;text-shadow:none;border-radius:99px;padding:.15rem .7rem;font-family:var(--font-body);font-weight:600}
+:root[data-theme="ios"] .tool{border:0;border-radius:18px;box-shadow:none;margin-top:0;padding:18px}
+:root[data-theme="ios"] .tool .tape{position:static;display:inline-block;margin-bottom:8px}
+:root[data-theme="ios"] .tool:hover{transform:none}
+:root[data-theme="ios"] .tool:active,:root[data-theme="ios"] .proj:active{transform:scale(.98)}
+:root[data-theme="ios"] .banner{border:0;background:var(--surface);color:var(--ink)}
+:root[data-theme="ios"] .pill,:root[data-theme="ios"] .tag{border:0;background:var(--surface-2)}
+:root[data-theme="ios"] .tip{border:0;background:var(--surface-2)}
+:root[data-theme="ios"] .etape{border:0;background:var(--surface-2)}
+:root[data-theme="ios"] .etape.ok{background:color-mix(in srgb,var(--good) 16%,var(--surface))}
+:root[data-theme="ios"] .num{border:0}
+:root[data-theme="ios"] .segs i{height:6px;border:0;border-radius:99px}
+:root[data-theme="ios"] .idea{border:0;background:var(--surface-2)}
+:root[data-theme="ios"] .row{border-bottom:.5px solid var(--line)}
+:root[data-theme="ios"] .badge{border:0;box-shadow:none;transform:none}
+:root[data-theme="ios"] .badge .ico{border:0;background:color-mix(in srgb,var(--tape) 30%,var(--surface))}
+:root[data-theme="ios"] .proj{border:0;box-shadow:none;border-radius:16px}
+:root[data-theme="ios"] .stat{border:0;background:var(--surface-2)}
+:root[data-theme="ios"] .avatar{border:0}
+:root[data-theme="ios"] .gallery figure{border:0;box-shadow:none;transform:none;padding:0;overflow:hidden}
+:root[data-theme="ios"] .ba,:root[data-theme="ios"] .ba.round,:root[data-theme="ios"] .nophoto{border:0}
+:root[data-theme="ios"] .ba.round{border-radius:14px}
+:root[data-theme="ios"] .hl-ring{border:2px solid var(--accent)}
+:root[data-theme="ios"] .vis{border:0;background:var(--surface-2)}
+:root[data-theme="ios"] .vis:has(input:checked){background:color-mix(in srgb,var(--accent) 16%,var(--surface));color:var(--ink)}
+:root[data-theme="ios"] .angle,:root[data-theme="ios"] .angle-main.dashed{border:1.5px dashed var(--line)}
+:root[data-theme="ios"] .angle.has{border-style:solid;border-width:.5px}
+:root[data-theme="ios"] .angle-del{border:0;background:rgba(0,0,0,.55);color:#fff}
+:root[data-theme="ios"] .pair img{border:0}
+:root[data-theme="ios"] .pin{border:0;background:var(--surface-2)}
+:root[data-theme="ios"] .msg{border:0}
+:root[data-theme="ios"] .modal{align-items:flex-end;padding:0}
+:root[data-theme="ios"] .modal-box{max-width:none;border:0;border-radius:20px 20px 0 0;box-shadow:none;padding:22px 20px calc(24px + env(safe-area-inset-bottom))}
+:root[data-theme="ios"] .theme-panel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:88vh;border:0;border-radius:20px 20px 0 0;padding-top:30px}
+:root[data-theme="ios"] .theme-panel::before{content:"";position:absolute;top:8px;left:50%;width:38px;height:5px;margin-left:-19px;border-radius:99px;background:rgba(120,120,128,.4)}
+:root[data-theme="ios"] .theme-tile{border:0}
+:root[data-theme="ios"] .theme-tile[aria-pressed=true]{box-shadow:none}
+:root[data-theme="ios"] #toast{bottom:calc(92px + env(safe-area-inset-bottom));background:rgba(40,40,42,.92);color:#fff;border:0;border-radius:14px;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+:root[data-theme="ios"] ::view-transition-old(root),:root[data-theme="ios"] ::view-transition-new(root){animation-duration:.18s}
+@keyframes sheet{from{transform:translateY(100%)}to{transform:none}}
+@media (prefers-reduced-motion:no-preference){
+  :root[data-theme="ios"]:not([data-motion="off"]) .modal-box,:root[data-theme="ios"]:not([data-motion="off"]) .theme-panel{animation:sheet .32s cubic-bezier(.2,.8,.2,1)}
+}

@@ -131,3 +131,71 @@ const ROOMS = [
      C("Plantes faciles", "3–10 €", "Lavande ou aromatiques."),
      C("Table pliante", "10–20 €", "Se range à plat quand tu n'en as pas besoin.")])
 ];
+
+
+/* ===== Personnalisation sans IA : ce que le membre indique modifie son plan ===== */
+// visible / trier / organiser / nettoyer / deco = tâches ajoutées dans l'étape correspondante
+// imprimante / diy / decoIdees = idées ajoutées en tête des listes
+const PROBLEMS = [
+  { id: 'vetements', label: 'Des vêtements qui traînent',
+    visible: ["Rassemble tous les vêtements qui traînent en un seul tas, puis sépare : propres à plier, sales au panier, à donner"],
+    organiser: ["Installe un panier ou un bac « à laver » à un endroit où tu le vois", "Prévois un coin « tenue du lendemain » (crochet ou cintre sur la porte) pour ne plus empiler sur une chaise"],
+    imprimante: [P("Crochet de porte pour la tenue du lendemain", "Clip sur le haut de la porte", "Un crochet qui se pince sur la porte, aucun perçage.", "over door hook clip")],
+    diy: [D("Cintre accroché en haut de la porte", "0–3 €", "Il sert de « chaise » pour les vêtements du jour.")] },
+  { id: 'cables', label: 'Câbles et chargeurs partout',
+    visible: ["Débranche ce qui ne sert pas et mets les câbles inutiles dans une boîte"],
+    organiser: ["Regroupe les câbles d'une même zone avec des attaches ou des pinces", "Choisis un seul « poste de charge » pour tes appareils (une prise, un plateau)"],
+    imprimante: [P("Clips et guide-câbles", "Adhésif double face", "Garde les fils le long du meuble.", "cable clip desk"), P("Station de charge", "Pose simple", "Un seul endroit pour tous les chargeurs.", "charging station organizer")],
+    diy: [D("Pinces à linge ou bandes velcro", "0–3 €", "Pour attacher et repérer les câbles.")] },
+  { id: 'surfaces', label: 'Surfaces encombrées (bureau, table, commode)',
+    visible: ["Vide complètement la surface la plus encombrée et ne remets que 3 objets utiles"],
+    organiser: ["Donne un plateau ou une boîte aux petits objets restants pour que la surface reste libre"],
+    imprimante: [P("Organiseur de bureau modulable", "Pose simple", "Des cases pour stylos, clés et petits objets.", "desk organizer modular")],
+    diy: [D("Plateau ou boîte récupérée", "0–5 €", "Regroupe les petits objets au lieu de les laisser éparpillés.")] },
+  { id: 'peu_rangement', label: 'Pas assez de rangements',
+    organiser: ["Utilise la hauteur : étagère, crochets ou boîtes empilables", "Exploite les espaces perdus : dessous de lit, dessus de porte, derrière une porte"],
+    imprimante: [P("Crochets et petites étagères adhésives", "Adhésif double face", "Ajoutent du rangement sans percer.", "adhesive shelf bracket")],
+    diy: [D("Cagettes ou boîtes empilées", "0–10 €", "Un meuble de rangement bon marché.")] },
+  { id: 'trop_objets', label: 'Trop d\'objets, trop de choses',
+    visible: ["Retire 10 objets dont tu ne te sers plus et mets-les dans un sac « à donner »"],
+    trier: ["Pour chaque objet, pose-toi la question : « Je l'ai utilisé depuis 6 mois ? »"],
+    diy: [D("Boîte « à donner » toujours ouverte", "0 €", "Tu y mets au fil de l'eau ce dont tu ne veux plus.")] },
+  { id: 'poussiere', label: 'Poussière et saleté',
+    nettoyer: ["Dépoussière avec un chiffon humide plutôt que sec, pour ne pas la remettre en l'air", "Libère le sol pour passer l'aspirateur facilement"],
+    diy: [D("Chiffons microfibres", "3–6 €", "Retiennent mieux la poussière.")] },
+  { id: 'deco', label: 'Il manque de la déco, de l\'ambiance',
+    deco: ["Choisis une ambiance (2 ou 3 couleurs maximum) et garde seulement les objets déco qui vont avec"],
+    decoIdees: [C("Lumière chaude", "5–15 €", "Une guirlande ou une petite lampe change toute l'ambiance."), C("Quelque chose de vivant", "3–8 €", "Une plante facile ou des fleurs séchées.")] },
+  { id: 'papiers', label: 'Papiers et courrier qui s\'accumulent',
+    visible: ["Trie le courrier : à jeter, à traiter cette semaine, à archiver"],
+    organiser: ["Crée 3 emplacements : « à traiter », « à classer », « à garder » (pochettes ou boîtes)", "Fixe un moment par semaine pour traiter le courrier (10 minutes)"],
+    diy: [D("Pochettes ou classeur", "2–8 €", "Un dossier par sujet.")] },
+  { id: 'petits_objets', label: 'Petits objets qui se perdent',
+    organiser: ["Donne une « maison » à chaque petit objet (clés, bijoux, écouteurs) dans un pot ou un plateau", "Étiquette les boîtes pour retrouver sans chercher"],
+    imprimante: [P("Plateau vide-poche", "Pose simple", "Clés, écouteurs et monnaie au même endroit.", "key tray")],
+    diy: [D("Pots en verre ou boîtes à chaussures", "0 €", "Un pot par catégorie de petits objets.")] },
+  { id: 'sol', label: 'Sol encombré',
+    visible: ["Ramasse tout ce qui est au sol : chaque objet retourne à sa place ou dans une boîte « en attente »"],
+    organiser: ["Libère un passage d'au moins 60 cm entre la porte et le fond de la pièce"] }
+];
+
+function buildLocalPlan(roomId, brief) {
+  const r = ROOMS.find(x => x.id === roomId) || ROOMS[0];
+  const b = brief && typeof brief === 'object' ? brief : {};
+  const ids = Array.isArray(b.problems) ? b.problems : [];
+  const picked = PROBLEMS.filter(p => ids.includes(p.id));
+  const keys = ['visible', 'trier', 'organiser', 'nettoyer', 'deco'];
+  const etapes = r.etapes.map((e, i) => ({ titre: e.titre, taches: [...picked.flatMap(p => p[keys[i]] || []), ...e.taches] }));
+  const merge = (own, extra, n) => { const seen = new Set(); return [...extra, ...own].filter(x => seen.has(x.nom) ? false : (seen.add(x.nom), true)).slice(0, n); };
+  const note = String(b.description || '').trim().slice(0, 160);
+  const total = etapes.reduce((s, e) => s + e.taches.length, 0);
+  const resume = (picked.length
+    ? `Plan sur mesure pour ${r.nom.toLowerCase()} : tes priorités (${picked.map(p => p.label.toLowerCase()).join(' ; ')}) passent en premier dans chaque étape.`
+    : `Plan pour ${r.nom.toLowerCase()} : ${r.accroche}`) + (note ? ` Ta note : « ${note} ».` : '');
+  return {
+    resume, duree_totale_min: Math.round(total * 8 / 5) * 5, budget_total: '', etapes,
+    imprimante: b.printer === false ? [] : merge(r.imprimante, picked.flatMap(p => p.imprimante || []), 6),
+    diy: merge(r.diy, picked.flatMap(p => p.diy || []), 6),
+    deco: merge(r.deco, picked.flatMap(p => p.decoIdees || []), 6)
+  };
+}

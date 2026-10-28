@@ -4,32 +4,38 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ranger & décorer – EasyYourLife</title>
-<link rel="stylesheet" href="../assets/style.css?v=318fb16d">
-<script src="../assets/theme.js?v=41fd1acb"></script>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../assets/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EasyYourLife">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="../assets/style.css?v=93b0748d">
+<script src="../assets/theme.js?v=229c1bf4"></script>
 </head>
 <body data-base="../">
 <header id="nav"></header>
 <main class="wrap" id="main"><p class="muted">Chargement…</p></main>
 <input type="file" id="file" accept="image/*" hidden>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="../assets/app.js?v=a2468392"></script>
-<script src="../assets/rooms.js?v=64ad6085"></script>
+<script src="../assets/app.js?v=7990a3e7"></script>
+<script src="../assets/rooms.js?v=5d6925fa"></script>
 <script>
 (async () => {
   const user = await initPage();
   const main = $('#main');
   const qs = new URLSearchParams(location.search);
   const ANGLES = ["Vue d'ensemble depuis la porte", 'Coin gauche', 'Coin droit', 'Mur du fond', 'Le sol', 'Plan de travail ou bureau', 'Placard ou tiroirs ouverts', 'Le plus gros bazar'];
-  const STATUS_LABEL = { draft: 'Photos à prendre', planned: 'Plan prêt', doing: 'En cours', after: 'Photos après', done: 'Terminé' };
-  const STEPS = ['Photos', 'Plan', 'Action', 'Après', 'Résultat'];
+  const STATUS_LABEL = { draft: 'Brouillon', planned: 'Plan prêt', doing: 'En cours', after: 'Presque fini', done: 'Terminé' };
+  const STEPS = ['Ta pièce', 'Plan', 'Action', 'Après', 'Résultat'];
   const AI_ERR = {
-    ai_not_configured: "L'IA n'est pas encore activée sur ce site. Tu peux utiliser le plan classique en attendant.",
-    ai_model_missing: "L'IA n'est pas encore entièrement configurée. Utilise le plan classique en attendant.",
-    user_limit: "Tu as atteint la limite de plans IA pour aujourd'hui. Réessaie demain ou utilise le plan classique.",
-    global_limit: "Le service IA est très demandé aujourd'hui. Réessaie plus tard ou utilise le plan classique.",
-    no_photos: 'Ajoute au moins une photo avant de générer le plan.',
+    ai_not_configured: "L'IA n'est pas encore activée sur ce site. Utilise le plan sur mesure, il s'adapte déjà à tes réponses.",
+    ai_model_missing: "L'IA n'est pas encore entièrement configurée. Utilise le plan sur mesure en attendant.",
+    user_limit: "Tu as atteint la limite de plans IA pour aujourd'hui. Réessaie demain ou utilise le plan sur mesure.",
+    global_limit: "Le service IA est très demandé aujourd'hui. Réessaie plus tard ou utilise le plan sur mesure.",
+    no_input: "Ajoute une photo ou coche ce qui te dérange (étape « Ta pièce ») pour que l'IA ait de quoi travailler.",
     photos_unreadable: "L'IA n'a pas pu lire tes photos. Essaie d'en reprendre quelques-unes.",
-    ai_failed: "L'IA n'a pas pu créer le plan. Réessaie, ou utilise le plan classique."
+    ai_failed: "L'IA n'a pas pu créer le plan. Réessaie, ou utilise le plan sur mesure."
   };
   const A = v => Array.isArray(v) ? v : [];
   const normPlan = pl => {
@@ -40,15 +46,14 @@
       imprimante: A(pl.imprimante), diy: A(pl.diy), deco: A(pl.deco)
     };
   };
-
   const how = () => `<div class="grid" style="margin:18px 0 6px">
-    <div class="card" style="margin:0"><div class="big-emoji">📸</div><h3>Photographie</h3><p class="muted">Ta pièce sous un maximum d'angles.</p></div>
-    <div class="card" style="margin:0"><div class="big-emoji">🤖</div><h3>Reçois ton plan</h3><p class="muted">Une IA regarde ce qu'il y a vraiment dans ta pièce.</p></div>
-    <div class="card" style="margin:0"><div class="big-emoji">🪄</div><h3>Compare</h3><p class="muted">Ton avant / après, à montrer ou à garder pour toi.</p></div></div>`;
+    <div class="card" style="margin:0"><div class="big-emoji">📝</div><h3>Dis ce qui te dérange</h3><p class="muted">Quelques réponses suffisent. Les photos sont facultatives.</p></div>
+    <div class="card" style="margin:0"><div class="big-emoji">🤖</div><h3>Reçois ton plan</h3><p class="muted">Sur mesure, avec ou sans IA.</p></div>
+    <div class="card" style="margin:0"><div class="big-emoji">🪄</div><h3>Compare</h3><p class="muted">Un avant / après si tu as pris des photos.</p></div></div>`;
 
   if (!user) {
     main.innerHTML = `<section class="hero"><h1 style="max-width:14ch">Un plan fait pour ta pièce.</h1>
-      <p class="lead">Prends ta pièce en photo, reçois un plan d'organisation personnalisé, puis compare l'avant et l'après.</p>${how()}
+      <p class="lead">Dis-nous ce qui te dérange (avec ou sans photos), reçois un plan d'organisation personnalisé, et garde un avant / après si tu veux.</p>${how()}
       <div class="cta-row" style="margin-top:20px"><a class="btn big" href="../connexion/">Créer mon compte pour commencer</a></div></section>`;
     return;
   }
@@ -63,7 +68,7 @@
     const urls = await signedMap(Object.values(covers));
     main.innerHTML = `
       <section class="hero" style="padding-bottom:6px"><h1 style="font-size:clamp(2rem,7vw,3.4rem);max-width:16ch">Ranger &amp; décorer</h1>
-        <p class="lead">Un plan d'organisation fait pour ta pièce, à partir de tes photos.</p>${how()}</section>
+        <p class="lead">Un plan d'organisation fait pour ta pièce. Photos facultatives.</p>${how()}</section>
       <div class="card" id="new"><h2>Nouveau projet</h2>
         <form id="new-form">
           <label class="field"><span>Quelle pièce ?</span><select id="room">${ROOMS.map(r => `<option value="${r.id}">${r.emoji} ${esc(r.nom)}</option>`).join('')}</select></label>
@@ -76,7 +81,7 @@
         const u = covers[p.id] ? urls[covers[p.id]] : null;
         const href = p.status === 'done' ? `../projet/?id=${p.id}` : `?p=${p.id}`;
         return `<a class="proj" href="${href}"><div class="cover">${u ? `<img src="${esc(u)}" alt="" loading="lazy">` : r.emoji}</div><div class="meta"><b>${esc(p.title)}</b><span class="status-pill">${STATUS_LABEL[p.status] || ''}</span></div></a>`;
-      }).join('')}</div>` : `<div class="card empty"><span class="big-emoji">📸</span><p class="muted">Aucun projet pour l'instant. Lance le premier ci-dessus.</p></div>`}`;
+      }).join('')}</div>` : `<div class="card empty"><span class="big-emoji">🏠</span><p class="muted">Aucun projet pour l'instant. Lance le premier ci-dessus.</p></div>`}`;
     const sel = $('#room'), title = $('#title');
     sel.onchange = () => { const r = ROOMS.find(x => x.id === sel.value); title.placeholder = 'Projet ' + r.nom.toLowerCase(); };
     $('#new-form').onsubmit = async e => {
@@ -97,6 +102,9 @@
     let project = proj;
     project.plan = project.plan ? normPlan(project.plan) : null;
     project.progress = project.progress && project.progress.checked ? project.progress : { checked: {} };
+    const rb = project.brief && typeof project.brief === 'object' ? project.brief : {};
+    project.brief = { problems: A(rb.problems).filter(id => PROBLEMS.some(p => p.id === id)), labels: [], description: String(rb.description || ''), budget: ['petit', 'moyen', 'libre'].includes(rb.budget) ? rb.budget : '' };
+    if (typeof rb.printer === 'boolean') project.brief.printer = rb.printer;
     const room = ROOMS.find(r => r.id === project.room) || ROOMS[0];
 
     const medias = { before: [], after: [] };
@@ -106,54 +114,79 @@
     const refreshUrls = async () => { urls = await signedMap([...medias.before, ...medias.after].map(m => m.storage_path)); };
     await refreshUrls();
 
-    let showGen = false, generating = false, planError = '', pickCtx = null, busy = false, saveT = null;
-    const reach = () => {
-      switch (project.status) {
-        case 'draft': return medias.before.length >= 3 ? 1 : 0;
-        case 'planned': case 'doing': return 2;
-        case 'after': return medias.after.length >= 1 ? 4 : 3;
-        default: return 4;
-      }
-    };
-    let step = project.status === 'planned' ? 1 : reach();
+    let showGen = false, generating = false, planError = '', pickCtx = null, busy = false, saveT = null, briefT = null, aiReady = null, pinging = false;
+    const reach = () => ({ draft: 1, planned: 2, doing: 2, after: 4 }[project.status] ?? 4);
+    let step = ({ draft: 0, planned: 1, doing: 2, after: 3 }[project.status]) ?? 0;
     const nextPos = () => medias.before.reduce((m, x) => Math.max(m, x.position), -1) + 1;
+    const nextAfterPos = () => medias.after.reduce((m, x) => Math.max(m, x.position), -1) + 1;
     const sortMedia = () => { medias.before.sort((a, b) => a.position - b.position); medias.after.sort((a, b) => a.position - b.position); };
+    const hasInput = () => medias.before.length > 0 || project.brief.problems.length > 0 || project.brief.description.trim().length > 0;
 
-    /* ----- Étape 1 : photos ----- */
-    function bodyPhotos() {
-      const n = medias.before.length;
+    /* ----- Réponses du membre ----- */
+    async function persistBrief() {
+      clearTimeout(briefT);
+      project.brief.labels = project.brief.problems.map(id => (PROBLEMS.find(p => p.id === id) || {}).label).filter(Boolean);
+      const { error } = await sb.from('projects').update({ brief: project.brief }).eq('id', project.id);
+      if (error) toast('Sauvegarde impossible : ' + error.message);
+    }
+    const saveBriefSoon = () => { clearTimeout(briefT); briefT = setTimeout(persistBrief, 600); };
+
+    /* ----- Étape 1 : ta pièce (tout est facultatif) ----- */
+    function bodyBrief() {
+      const b = project.brief, n = medias.before.length;
+      const chips = PROBLEMS.map(p => `<button type="button" class="chip ${b.problems.includes(p.id) ? 'on' : ''}" data-act="toggle-problem" data-id="${p.id}" aria-pressed="${b.problems.includes(p.id)}">${esc(p.label)}</button>`).join('');
+      const seg = (name, opts, cur) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button type="button" data-act="${name}" data-v="${v}" aria-selected="${cur === v}">${l}</button>`).join('')}</div>`;
       const tiles = ANGLES.map(a => {
         const m = medias.before.find(x => x.angle === a);
         return `<div class="angle ${m ? 'has' : ''}"><button type="button" class="angle-main" data-act="pick" data-angle="${esc(a)}">${m && urls[m.storage_path] ? `<img src="${esc(urls[m.storage_path])}" alt="">` : '<span class="plus">📷</span>'}<b>${esc(a)}</b><small class="muted">${m ? 'Remplacer' : 'Ajouter'}</small></button>${m ? `<button type="button" class="angle-del" data-act="del" data-id="${m.id}" aria-label="Supprimer cette photo">✕</button>` : ''}</div>`;
       }).join('');
       const extras = medias.before.filter(m => !m.angle).map(m => `<div class="angle has"><div class="angle-main">${urls[m.storage_path] ? `<img src="${esc(urls[m.storage_path])}" alt="">` : ''}<b>Autre photo</b></div><button type="button" class="angle-del" data-act="del" data-id="${m.id}" aria-label="Supprimer cette photo">✕</button></div>`).join('');
-      return `<div class="card"><h2>Prends ta pièce en photo</h2>
-        <p class="muted">Plus tu donnes d'angles, plus le plan sera précis. Vise au moins 3 photos, 8 au maximum. Évite d'y mettre des personnes. <b>${n} / 8</b></p>
-        <div class="angle-grid">${tiles}${extras}</div>
-        <div class="actions"><button type="button" class="btn ghost" data-act="pick-free" ${n >= 8 ? 'disabled' : ''}>＋ Autre photo</button>
-        <button type="button" class="btn" data-act="next" ${n < 3 ? 'disabled' : ''}>Continuer →</button></div>
-        ${n < 3 ? `<p class="muted" style="margin-top:10px">Encore ${3 - n} photo${3 - n > 1 ? 's' : ''} pour continuer.</p>` : ''}</div>`;
+      return `<div class="card"><h2>Parle-nous de ta pièce <span class="optional">facultatif</span></h2>
+          <p class="muted">Plus tu en dis, plus le plan est adapté. Tu peux aussi tout passer et continuer directement.</p>
+          <h4>Qu'est-ce qui te dérange ?</h4>
+          <div class="chips" style="justify-content:flex-start;margin-top:8px">${chips}</div>
+          <label class="field" style="margin-top:16px"><span>Décris-la en quelques mots</span><textarea id="desc" rows="3" maxlength="600" placeholder="Ex. : petite chambre, un bureau dans un coin, pas de place pour les vêtements…">${esc(b.description)}</textarea></label>
+          <h4>Budget</h4>${seg('budget', [['petit', 'Petit'], ['moyen', 'Moyen'], ['libre', 'Peu importe']], b.budget)}
+          <h4 style="margin-top:14px">Imprimante 3D</h4>${seg('printer', [['yes', "J'en ai une"], ['no', "Pas d'imprimante"]], b.printer === true ? 'yes' : b.printer === false ? 'no' : '')}</div>
+        <div class="card"><details class="fold" ${n ? 'open' : ''}><summary>📸 Ajouter des photos <span class="optional">facultatif · ${n} / 8</span></summary>
+          <p class="muted">Les photos rendent le plan plus précis et te permettent de garder un avant / après. Tu n'es pas obligé(e) d'en prendre. Évite d'y mettre des personnes.</p>
+          <div class="angle-grid">${tiles}${extras}</div>
+          <button type="button" class="btn ghost" data-act="pick-free" ${n >= 8 ? 'disabled' : ''}>＋ Autre photo</button></details></div>
+        <div class="actions"><button type="button" class="btn big" data-act="next">Continuer →</button></div>`;
     }
 
     /* ----- Étape 2 : plan ----- */
+    const SOURCE_LABEL = { ia: '✨ Ton plan personnalisé (IA)', perso: '🧩 Ton plan sur mesure', classique: '📋 Plan classique' };
     function planSummary() {
-      const p = project.plan, ia = project.plan_source === 'ia';
-      return `<h2>${ia ? '✨ Ton plan personnalisé' : '📋 Plan classique'}</h2>${p.resume ? `<p>${esc(p.resume)}</p>` : ''}
+      const p = project.plan;
+      return `<h2>${SOURCE_LABEL[project.plan_source] || '📋 Ton plan'}</h2>${p.resume ? `<p>${esc(p.resume)}</p>` : ''}
         <p>${p.duree_totale_min ? `<span class="tag">⏱️ environ ${esc(p.duree_totale_min)} min</span> ` : ''}${p.budget_total ? `<span class="tag">💶 ${esc(p.budget_total)}</span> ` : ''}<span class="tag">${p.etapes.length} étapes</span></p>
         <ol class="plan-steps">${p.etapes.map(e => `<li><b>${esc(e.titre)}</b> <span class="muted">(${e.taches.length} tâches)</span></li>`).join('')}</ol>`;
     }
     function bodyPlan() {
-      if (generating) return `<div class="card"><h2>L'IA regarde tes photos…</h2><p><span class="spinner"></span>Ça prend en général 10 à 30 secondes.</p></div>`;
-      if (project.plan && !showGen) return `<div class="card">${planSummary()}<div class="actions"><button type="button" class="btn" data-act="next">Commencer le plan →</button><button type="button" class="btn ghost" data-act="replan">Refaire le plan</button></div></div>`;
-      return `<div class="card"><h2>Ton plan sur mesure</h2>
-        <p class="muted">Une IA regarde tes ${medias.before.length} photos et écrit un plan adapté à ce qu'elle voit : quoi ranger en premier, quoi imprimer, quoi bricoler, quoi décorer.</p>
-        <label class="field" style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="chk" id="consent"><span>J'accepte que mes photos soient envoyées à un service d'IA pour créer mon plan. Je n'y ai mis ni personne ni information privée.</span></label>
-        ${planError ? `<div class="msg err">${esc(planError)}</div>` : ''}
-        <div class="actions"><button type="button" class="btn" data-act="gen" id="btn-gen" disabled>✨ Générer mon plan</button>
-        <button type="button" class="btn ghost" data-act="classic">Plan classique (sans IA)</button>
-        ${project.plan ? '<button type="button" class="btn ghost" data-act="cancel-replan">Annuler</button>' : ''}</div></div>`;
+      if (generating) return `<div class="card"><h2>L'IA prépare ton plan…</h2><p><span class="spinner"></span>Ça prend en général 10 à 30 secondes.</p></div>`;
+      if (project.plan && !showGen) return `<div class="card">${planSummary()}<div class="actions"><button type="button" class="btn" data-act="next">Commencer le plan →</button><button type="button" class="btn ghost" data-act="replan">Changer de plan</button></div></div>`;
+      const nPhotos = medias.before.length, nPb = project.brief.problems.length;
+      let ai;
+      if (aiReady === null) ai = `<div class="card"><h3>✨ Plan par IA</h3><p class="muted"><span class="spinner"></span>Vérification…</p></div>`;
+      else if (!aiReady) ai = `<div class="card"><h3>✨ Plan par IA <span class="optional">bientôt</span></h3><p class="muted">L'IA n'est pas encore activée sur ce site. En attendant, le plan sur mesure ci-dessous s'adapte déjà à tes réponses.</p></div>`;
+      else ai = `<div class="card"><h3>✨ Plan par IA</h3><p class="muted">Une IA écrit un plan à partir ${nPhotos ? `de tes ${nPhotos} photo${nPhotos > 1 ? 's' : ''} et ` : ''}de tes réponses.</p>
+          ${hasInput() ? `<label class="field" style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="chk" id="consent"><span>J'accepte que ${nPhotos ? 'mes photos et ' : ''}mes réponses soient envoyées à un service d'IA pour créer mon plan. Je n'y mets ni personne ni information privée.</span></label>
+          <button type="button" class="btn" data-act="gen" id="btn-gen" disabled>✨ Générer mon plan</button>` : `<p class="muted">Pour que l'IA ait de quoi travailler, ajoute une photo ou coche ce qui te dérange (étape « Ta pièce »).</p>`}</div>`;
+      return `${planError ? `<div class="msg err">${esc(planError)}</div>` : ''}${ai}
+        <div class="card"><h3>🧩 Plan sur mesure <span class="optional">gratuit, sans IA</span></h3>
+          <p class="muted">Un plan adapté à ce que tu as indiqué${nPb ? ` (${nPb} priorité${nPb > 1 ? 's' : ''})` : ''}.</p>
+          <button type="button" class="btn ${aiReady ? 'ghost' : ''}" data-act="perso">Créer mon plan sur mesure</button></div>
+        <div class="card"><h3>📋 Plan classique</h3><p class="muted">Le plan standard pour cette pièce, sans personnalisation.</p>
+          <button type="button" class="btn ghost" data-act="classic">Utiliser le plan classique</button>${project.plan ? ' <button type="button" class="btn ghost" data-act="cancel-replan">Annuler</button>' : ''}</div>`;
+    }
+    async function pingAI() {
+      try { const { data, error } = await sb.functions.invoke('room-plan', { body: { ping: true } }); aiReady = !error && !!(data && data.ai_ready); }
+      catch (e) { aiReady = false; }
+      if (step === 1) render();
     }
     async function generate() {
+      await persistBrief();
       generating = true; planError = ''; render();
       const { data, error } = await sb.functions.invoke('room-plan', { body: { project_id: project.id } });
       generating = false;
@@ -166,35 +199,36 @@
       if (project.status === 'draft') project.status = 'planned';
       showGen = false; render();
     }
-    async function useClassic() {
-      const plan = { resume: `Plan classique pour ta pièce : ${room.accroche}`, duree_totale_min: null, budget_total: '', etapes: room.etapes.map(e => ({ titre: e.titre, taches: e.taches })), imprimante: room.imprimante, diy: room.diy, deco: room.deco };
-      const patch = { plan, plan_source: 'classique', plan_at: new Date().toISOString(), status: project.status === 'draft' ? 'planned' : project.status };
+    async function usePlan(kind) {
+      await persistBrief();
+      const plan = buildLocalPlan(project.room, kind === 'perso' ? project.brief : { printer: project.brief.printer });
+      const patch = { plan, plan_source: kind, plan_at: new Date().toISOString(), status: project.status === 'draft' ? 'planned' : project.status };
       const { error } = await sb.from('projects').update(patch).eq('id', project.id);
       if (error) return toast('Oups : ' + error.message);
-      project.plan = normPlan(plan); project.plan_source = 'classique'; project.status = patch.status; showGen = false; planError = ''; render();
+      project.plan = normPlan(plan); project.plan_source = kind; project.status = patch.status; showGen = false; planError = ''; render();
     }
 
     /* ----- Étape 3 : action ----- */
     function bodyAction() {
-      const pl = project.plan; if (!pl) return '<div class="card"><p>Génère d\'abord ton plan.</p></div>';
-      const checked = project.progress.checked;
+      const pl = project.plan; if (!pl) return '<div class="card"><p>Choisis d\'abord ton plan.</p></div>';
+      const checked = project.progress.checked, withPrinter = project.brief.printer !== false;
       const etapes = pl.etapes.map((e, ei) => `<div class="etape" data-e="${ei}"><h3><span class="num">${ei + 1}</span>${esc(e.titre)}</h3><ul class="tasks">${e.taches.map((t, ti) => { const k = ei + '-' + ti; return `<li><label><input type="checkbox" class="chk" data-k="${k}" ${checked[k] ? 'checked' : ''}><span>${esc(t)}</span></label></li>`; }).join('')}</ul></div>`).join('');
       const imp = `<div class="tip">💡 Sans perçage : adhésif double face réutilisable, clip sur un bord, encoche ou simple pose. PLA en intérieur, PETG ou ASA pour la salle de bain et l'extérieur.</div>` +
         (pl.imprimante.length ? pl.imprimante.map(i => `<article class="idea"><h4>🖨️ ${esc(i.nom)}</h4><p>${esc(i.desc)}</p>${i.fixation ? `<span class="tag">Fixation : ${esc(i.fixation)}</span>` : ''}${i.recherche ? `<p><a href="https://www.printables.com/search/models?q=${encodeURIComponent(i.recherche)}" target="_blank" rel="noopener">Chercher un modèle à imprimer →</a></p>` : ''}</article>`).join('') : '<p class="muted">Pas d\'idée d\'impression pour ce plan.</p>');
-      const diy = `<div class="tip">🛠️ Pas d'imprimante 3D ? Ces alternatives font le même travail, souvent avec des objets récupérés.</div>` + pl.diy.map(i => `<article class="idea"><h4>🔧 ${esc(i.nom)}</h4><p>${esc(i.desc)}</p>${i.cout ? `<span class="tag">Budget : ${esc(i.cout)}</span>` : ''}</article>`).join('');
+      const diy = `<div class="tip">🛠️ Des alternatives qui marchent sans imprimante 3D, souvent avec des objets récupérés.</div>` + pl.diy.map(i => `<article class="idea"><h4>🔧 ${esc(i.nom)}</h4><p>${esc(i.desc)}</p>${i.cout ? `<span class="tag">Budget : ${esc(i.cout)}</span>` : ''}</article>`).join('');
       const deco = `<div class="tip">🎨 Des idées à petit prix pour changer l'ambiance sans te ruiner.</div>` + pl.deco.map(i => `<article class="idea"><h4>✨ ${esc(i.nom)}</h4><p>${esc(i.desc)}</p>${i.budget ? `<span class="tag">Budget : ${esc(i.budget)}</span>` : ''}</article>`).join('');
       return `<div class="card">
         <div class="progress"><div class="segs" id="segs" aria-hidden="true">${pl.etapes.map(() => '<i><b></b></i>').join('')}</div><b id="pct">0 %</b></div>
         <div class="tabs" role="tablist">
           <button type="button" class="tab" data-tab="plan" aria-selected="true">📋 Plan</button>
-          <button type="button" class="tab" data-tab="3d" aria-selected="false">🖨️ Impression 3D</button>
-          <button type="button" class="tab" data-tab="diy" aria-selected="false">🔧 Sans imprimante</button>
+          ${withPrinter ? '<button type="button" class="tab" data-tab="3d" aria-selected="false">🖨️ Impression 3D</button>' : ''}
+          <button type="button" class="tab" data-tab="diy" aria-selected="false">🔧 ${withPrinter ? 'Sans imprimante' : 'Bricolage'}</button>
           <button type="button" class="tab" data-tab="deco" aria-selected="false">✨ Déco pas chère</button></div>
         <div class="panel" data-panel="plan">${etapes}</div>
-        <div class="panel" data-panel="3d" hidden>${imp}</div>
+        ${withPrinter ? `<div class="panel" data-panel="3d" hidden>${imp}</div>` : ''}
         <div class="panel" data-panel="diy" hidden>${diy}</div>
         <div class="panel" data-panel="deco" hidden>${deco}</div>
-        <div class="actions"><button type="button" class="btn" id="btn-after" data-act="to-after" disabled>📸 Passer aux photos « après »</button></div></div>`;
+        <div class="actions"><button type="button" class="btn" id="btn-after" data-act="to-after" disabled>Plan terminé → suite</button></div></div>`;
     }
     function updateProgress() {
       const pl = project.plan; if (!pl || !$('#segs')) return;
@@ -217,25 +251,39 @@
       }, 500);
     }
 
-    /* ----- Étape 4 : photos après ----- */
+    /* ----- Étape 4 : photos après (facultatif) ----- */
     function bodyAfter() {
-      const rows = medias.before.map(b => {
-        const a = medias.after.find(x => x.position === b.position);
-        return `<div class="pair">
-          <figure><img src="${esc(urls[b.storage_path] || '')}" alt="Avant"><figcaption class="muted">Avant${b.angle ? ' · ' + esc(b.angle) : ''}</figcaption></figure>
-          ${a ? `<figure><img src="${esc(urls[a.storage_path] || '')}" alt="Après"><button type="button" class="btn small ghost" data-act="pick-after" data-pos="${b.position}">Remplacer</button></figure>`
-              : `<button type="button" class="angle-main dashed" data-act="pick-after" data-pos="${b.position}"><span class="plus">📷</span><b>Prendre l'après</b><small class="muted">Même angle si possible</small></button>`}</div>`;
-      }).join('');
-      const n = medias.after.length;
-      return `<div class="card"><h2>Reprends les mêmes angles</h2><p class="muted">Place-toi au même endroit que sur la photo « avant ». Au moins une photo « après » est nécessaire (${n} / ${medias.before.length}).</p>${rows}
-        <div class="actions"><button type="button" class="btn" data-act="to-result" ${n < 1 ? 'disabled' : ''}>Voir le résultat →</button></div></div>`;
+      const nb = medias.before.length, na = medias.after.length;
+      let rows;
+      if (nb) {
+        rows = medias.before.map(b => {
+          const a = medias.after.find(x => x.position === b.position);
+          return `<div class="pair">
+            <figure><img src="${esc(urls[b.storage_path] || '')}" alt="Avant"><figcaption class="muted">Avant${b.angle ? ' · ' + esc(b.angle) : ''}</figcaption></figure>
+            ${a ? `<figure><img src="${esc(urls[a.storage_path] || '')}" alt="Après"><button type="button" class="btn small ghost" data-act="pick-after" data-pos="${b.position}">Remplacer</button></figure>`
+                : `<button type="button" class="angle-main dashed" data-act="pick-after" data-pos="${b.position}"><span class="plus">📷</span><b>Prendre l'après</b><small class="muted">Même angle si possible</small></button>`}</div>`;
+        }).join('');
+      } else {
+        rows = `<div class="angle-grid">${medias.after.map(a => `<div class="angle has"><div class="angle-main">${urls[a.storage_path] ? `<img src="${esc(urls[a.storage_path])}" alt="">` : ''}<b>Photo finale</b></div><button type="button" class="angle-del" data-act="del-after" data-id="${a.id}" aria-label="Supprimer cette photo">✕</button></div>`).join('')}</div>
+          <button type="button" class="btn ghost" data-act="pick-after-free" ${na >= 4 ? 'disabled' : ''}>📷 Ajouter une photo finale</button>`;
+      }
+      return `<div class="card"><h2>Photos « après » <span class="optional">facultatif</span></h2>
+        <p class="muted">${nb ? 'Reprends les mêmes angles pour comparer. Tu peux aussi passer cette étape.' : "Tu n'as pas pris de photos avant : ajoute une photo finale si tu veux, ou passe."}</p>${rows}
+        <div class="actions"><button type="button" class="btn" data-act="to-result">${na ? 'Voir le résultat →' : 'Continuer sans photo →'}</button></div></div>`;
     }
 
     /* ----- Étape 5 : résultat ----- */
     function bodyResult() {
-      const sliders = pairsOf(medias).filter(p => p.after).map(p => `<div style="margin-bottom:18px">${sliderHTML(urls[p.before.storage_path], urls[p.after.storage_path], 'round')}<p class="muted" style="margin:6px 0 0">${p.before.angle ? esc(p.before.angle) : ''}</p></div>`).join('');
+      const pairs = pairsOf(medias).filter(p => p.after);
+      const sliders = pairs.map(p => `<div style="margin-bottom:18px">${sliderHTML(urls[p.before.storage_path], urls[p.after.storage_path], 'round')}<p class="muted" style="margin:6px 0 0">${p.before.angle ? esc(p.before.angle) : ''}</p></div>`).join('');
+      const used = new Set(pairs.map(p => p.after.id));
+      const loose = medias.after.filter(a => !used.has(a.id)).map(a => `<div style="margin-bottom:18px">${singleHTML(urls[a.storage_path], 'Après', 'round')}</div>`).join('');
+      const nTasks = Object.keys(project.progress.checked).length;
+      const visual = (sliders || loose)
+        ? `<div class="card"><h2>Ton résultat</h2>${sliders ? '<p class="muted">Glisse pour comparer.</p>' : ''}${sliders}${loose}</div>`
+        : `<div class="card empty"><span class="big-emoji">${room.emoji}</span><h2>${nTasks} tâche${nTasks > 1 ? 's' : ''} terminée${nTasks > 1 ? 's' : ''}</h2><p class="muted">Pas de photos, et c'est très bien : ton projet est prêt à être terminé.</p></div>`;
       const VIS = [['private', '🔒', 'Privé', 'Seulement toi'], ['friends', '👥', 'Mes amis', 'Sur ton profil et dans leur fil'], ['public', '🌍', 'Tous les membres', 'Sur ton profil et dans le fil « Découvrir »']];
-      return `<div class="card"><h2>Ton avant / après</h2><p class="muted">Glisse pour comparer.</p>${sliders}</div>
+      return `${visual}
         <div class="card"><h3>Qui peut le voir ?</h3><p class="muted">Tu peux le changer à tout moment.</p>
           <div class="vis-opts">${VIS.map(v => `<label class="vis"><input type="radio" name="vis" value="${v[0]}" ${v[0] === 'private' ? 'checked' : ''}><span><b>${v[1]} ${v[2]}</b><small>${v[3]}</small></span></label>`).join('')}</div>
           <label class="field"><span>Légende (facultatif)</span><textarea id="caption" rows="2" maxlength="300" placeholder="Raconte en une phrase ce que tu as changé"></textarea></label>
@@ -247,13 +295,13 @@
       const btn = $('[data-act=finish]'); btn.disabled = true;
       const before = await myBadgeCodes(user.id);
       const { error } = await sb.from('projects').update({ status: 'done', visibility: vis, caption: caption || null }).eq('id', project.id);
-      if (error) { btn.disabled = false; return toast(error.message.includes('photo') ? error.message : 'Oups : ' + error.message); }
+      if (error) { btn.disabled = false; return toast('Oups : ' + error.message); }
       const after = await myBadgeCodes(user.id);
       const fresh = [...after].filter(c => !before.has(c));
       let list = [];
       if (fresh.length) { const { data } = await sb.from('badges').select('*').in('code', fresh).order('sort_order'); list = data || []; }
       project.status = 'done';
-      showModal(`<h2>Projet terminé ! 🎉</h2><p class="muted">Bravo, ton avant / après est prêt.</p>${badgePopupHTML(list)}<a class="btn" href="../projet/?id=${project.id}">Voir mon avant / après</a>`, true, null);
+      showModal(`<h2>Projet terminé ! 🎉</h2><p class="muted">Bravo, c'est fait.</p>${badgePopupHTML(list)}<a class="btn" href="../projet/?id=${project.id}">Voir mon projet</a>`, true, null);
     }
 
     /* ----- Photos : envoi et suppression ----- */
@@ -299,34 +347,45 @@
     function render() {
       const r = reach();
       const stepper = STEPS.map((s, i) => `<button type="button" class="step ${i < r ? 'done' : ''}" ${i === step ? 'aria-current="step"' : ''} ${i > r ? 'disabled' : ''} data-step="${i}"><span class="n">${i + 1}</span>${s}</button>`).join('');
-      const body = [bodyPhotos, bodyPlan, bodyAction, bodyAfter, bodyResult][step]();
+      const body = [bodyBrief, bodyPlan, bodyAction, bodyAfter, bodyResult][step]();
       main.innerHTML = `<div class="room-head" style="margin-bottom:10px"><div class="big-emoji">${room.emoji}</div><div><h1 style="font-size:clamp(1.5rem,5vw,2.3rem);margin:0">${esc(project.title)}</h1><p class="muted" style="margin:0"><a href="./">← Mes projets</a></p></div></div>
         <div class="stepper">${stepper}</div>${body}`;
       initSliders(main);
       if (step === 2) updateProgress();
+      if (step === 1 && aiReady === null && !pinging) { pinging = true; pingAI(); }
     }
 
+    const selectOnly = (btn, attr) => { $$('[data-act="' + btn.dataset.act + '"]', main).forEach(x => x.setAttribute(attr, String(x === btn))); };
     main.addEventListener('click', async e => {
       const t = e.target.closest('[data-act],[data-step],[data-tab]'); if (!t) return;
-      if (t.dataset.step !== undefined) { step = Number(t.dataset.step); render(); return; }
+      if (t.dataset.step !== undefined) { if (step === 0) await persistBrief(); step = Number(t.dataset.step); render(); return; }
       if (t.dataset.tab) {
         $$('.tab', main).forEach(x => x.setAttribute('aria-selected', x === t));
         $$('.panel', main).forEach(x => { x.hidden = x.dataset.panel !== t.dataset.tab; });
         return;
       }
       switch (t.dataset.act) {
+        case 'toggle-problem': {
+          const id = t.dataset.id, list = project.brief.problems, i = list.indexOf(id);
+          if (i >= 0) list.splice(i, 1); else list.push(id);
+          t.classList.toggle('on', i < 0); t.setAttribute('aria-pressed', String(i < 0)); saveBriefSoon(); break;
+        }
+        case 'budget': project.brief.budget = t.dataset.v; selectOnly(t, 'aria-selected'); saveBriefSoon(); break;
+        case 'printer': project.brief.printer = t.dataset.v === 'yes'; selectOnly(t, 'aria-selected'); saveBriefSoon(); break;
         case 'pick': pickCtx = { kind: 'before', angle: t.dataset.angle }; $('#file').multiple = false; $('#file').click(); break;
         case 'pick-free': pickCtx = { kind: 'before', angle: null }; $('#file').multiple = true; $('#file').click(); break;
         case 'pick-after': pickCtx = { kind: 'after', position: Number(t.dataset.pos) }; $('#file').multiple = false; $('#file').click(); break;
-        case 'del': {
-          const m = medias.before.find(x => x.id === t.dataset.id);
+        case 'pick-after-free': pickCtx = { kind: 'after', position: nextAfterPos() }; $('#file').multiple = false; $('#file').click(); break;
+        case 'del': case 'del-after': {
+          const m = [...medias.before, ...medias.after].find(x => x.id === t.dataset.id);
           if (!m || busy) break;
           if (!confirm('Supprimer cette photo ?')) break;
-          busy = true; try { await removeMedia(m, true); } finally { busy = false; } render(); break;
+          busy = true; try { await removeMedia(m, t.dataset.act === 'del'); } finally { busy = false; } render(); break;
         }
-        case 'next': step = Math.min(4, step + 1); render(); break;
+        case 'next': if (step === 0) await persistBrief(); step = Math.min(4, step + 1); render(); break;
         case 'gen': generate(); break;
-        case 'classic': useClassic(); break;
+        case 'perso': usePlan('perso'); break;
+        case 'classic': usePlan('classique'); break;
         case 'replan': showGen = true; planError = ''; render(); break;
         case 'cancel-replan': showGen = false; planError = ''; render(); break;
         case 'to-after': {
@@ -338,6 +397,7 @@
         case 'finish': finishProject(); break;
       }
     });
+    main.addEventListener('input', e => { if (e.target.id === 'desc') { project.brief.description = e.target.value; saveBriefSoon(); } });
     main.addEventListener('change', e => {
       const k = e.target.dataset && e.target.dataset.k;
       if (k) {

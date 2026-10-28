@@ -2,6 +2,7 @@
 (function () {
   var KEY = 'eyl_style_v1';
   var THEMES = [
+    { id: 'ios', nom: 'iOS', emoji: '📱', dark: 'auto', desc: 'Comme une vraie appli iPhone', fonts: null, sw: ['#f2f2f7', '#ffffff', '#0a6cf0', '#34c759'] },
     { id: 'atelier', nom: 'Atelier', emoji: '🛠️', dark: false, desc: 'Établi clair, étiquettes jaunes', fonts: 'family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Figtree:wght@400..800', sw: ['#dfe7ea', '#ffffff', '#ff6b2c', '#ffd23f'] },
     { id: 'neon', nom: 'Nuit néon', emoji: '🌃', dark: true, desc: 'Violet profond, rose et cyan', fonts: 'family=Syne:wght@500..800&family=Outfit:wght@400..700', sw: ['#120b2e', '#1c1342', '#ff3ea5', '#3df0ff'] },
     { id: 'sakura', nom: 'Sakura', emoji: '🌸', dark: false, desc: 'Rose doux, coins très ronds', fonts: 'family=Fredoka:wght@400..700&family=Nunito:wght@400..800', sw: ['#ffe3ec', '#fff8fb', '#ff5c8a', '#c9b6ff'] },
@@ -33,7 +34,7 @@
   }
   function loadFonts(id) {
     var t = THEMES.filter(function (x) { return x.id === id; })[0];
-    if (!t || document.querySelector('link[data-eyl-font="' + id + '"]')) return;
+    if (!t || !t.fonts || document.querySelector('link[data-eyl-font="' + id + '"]')) return;
     if (!document.querySelector('link[data-eyl-pre]')) {
       var a = document.createElement('link'); a.rel = 'preconnect'; a.href = 'https://fonts.googleapis.com'; a.setAttribute('data-eyl-pre', '1');
       var b = document.createElement('link'); b.rel = 'preconnect'; b.href = 'https://fonts.gstatic.com'; b.crossOrigin = 'anonymous';
@@ -51,17 +52,22 @@
     var de = document.documentElement;
     de.setAttribute('data-theme', id);
     de.setAttribute('data-motion', state.motion === 'off' ? 'off' : 'on');
-    de.style.colorScheme = t.dark ? 'dark' : 'light';
+    de.style.colorScheme = t.dark === 'auto' ? 'light dark' : (t.dark ? 'dark' : 'light');
     de.style.fontSize = SIZES[state.size] || SIZES.m;
     if (state.accent) { de.style.setProperty('--accent', state.accent); de.style.setProperty('--accent-ink', inkFor(state.accent)); }
     else { de.style.removeProperty('--accent'); de.style.removeProperty('--accent-ink'); }
     loadFonts(id);
     var m = document.querySelector('meta[name="theme-color"]');
     if (!m) { m = document.createElement('meta'); m.name = 'theme-color'; document.head.appendChild(m); }
-    m.content = t.sw[0];
+    var dm = false; try { dm = matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) {}
+    m.content = t.dark === 'auto' ? (dm ? '#000000' : t.sw[0]) : t.sw[0];
+    var vt = document.getElementById('eyl-vt');
+    if (id === 'ios' && state.motion !== 'off') {
+      if (!vt) { vt = document.createElement('style'); vt.id = 'eyl-vt'; vt.textContent = '@view-transition{navigation:auto}'; document.head.appendChild(vt); }
+    } else if (vt) { vt.remove(); }
   }
   apply();
-  try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { if (state.theme === 'auto') apply(); }); } catch (e) {}
+  try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { if (state.theme === 'auto' || state.theme === 'ios') apply(); }); } catch (e) {}
 
   /* ----- Panneau ----- */
   var panel = null, overlay = null, lastFocus = null;

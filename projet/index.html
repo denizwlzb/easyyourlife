@@ -4,15 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Projet – EasyYourLife</title>
-<link rel="stylesheet" href="../assets/style.css?v=318fb16d">
-<script src="../assets/theme.js?v=41fd1acb"></script>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../assets/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EasyYourLife">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="../assets/style.css?v=93b0748d">
+<script src="../assets/theme.js?v=229c1bf4"></script>
 </head>
 <body data-base="../">
 <header id="nav"></header>
 <main class="wrap" id="main"><p class="muted">Chargement…</p></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="../assets/app.js?v=a2468392"></script>
-<script src="../assets/rooms.js?v=64ad6085"></script>
+<script src="../assets/app.js?v=7990a3e7"></script>
+<script src="../assets/rooms.js?v=5d6925fa"></script>
 <script>
 (async () => {
   const user = await initPage();
@@ -52,6 +58,10 @@
           ${pr.after ? `<button type="button" class="pin" data-pin="${pr.after.id}" aria-pressed="${pr.after.pinned}">📌 Après</button>` : ''}</div>` : '';
       return `<div style="margin-bottom:22px">${sliderHTML(bu, au, 'round')}<p class="muted" style="margin:6px 0 0">${pr.before.angle ? esc(pr.before.angle) : 'Photo ' + (i + 1)}</p>${pins}</div>`;
     }).join('');
+    const usedAfter = new Set(pairs.map(x => x.after && x.after.id).filter(Boolean));
+    const loose = m.after.filter(a => !usedAfter.has(a.id)).map(a => `<div style="margin-bottom:18px">${urls[a.storage_path] ? singleHTML(urls[a.storage_path], 'Après', 'round') : ''}${isMe ? `<div class="actions" style="margin:8px 0 0"><button type="button" class="pin" data-pin="${a.id}" aria-pressed="${a.pinned}">📌 Épingler</button></div>` : ''}</div>`).join('');
+    const nTasks = Object.keys((p.progress && p.progress.checked) || {}).length;
+    const recap = (!sliders && !loose) ? `<div class="card empty"><span class="big-emoji">${room ? room.emoji : '🏠'}</span><h3>${nTasks ? nTasks + ' tâche' + (nTasks > 1 ? 's' : '') + ' terminée' + (nTasks > 1 ? 's' : '') : 'Projet sans photo'}</h3><p class="muted">Ce projet n'a pas de photos, et c'est très bien comme ça.</p></div>` : '';
     const done = p.status === 'done';
     main.innerHTML = `
       <div class="room-head" style="margin-bottom:14px">
@@ -60,7 +70,7 @@
         <p class="muted" style="margin:0"><a href="../profil/?u=${encodeURIComponent(owner.username)}">${esc(owner.username)}</a> · ${room ? room.emoji + ' ' + esc(room.nom) : ''} · ${ago(p.completed_at || p.created_at)}${done ? '' : ' <span class="status-pill">en cours</span>'}</p></div>
       </div>
       ${p.caption ? `<p>${esc(p.caption)}</p>` : ''}
-      ${sliders || '<div class="card empty"><p class="muted">Pas encore de photos.</p></div>'}
+      ${sliders}${loose}${recap}
       <div class="post-actions" style="margin:6px 0 18px"><button type="button" class="like" id="like" aria-pressed="${L.mine}"><span class="h">${L.mine ? '❤️' : '🤍'}</span><span class="n">${L.n}</span></button></div>
       ${planHTML()}
       ${isMe ? `<div class="card"><h3>Réglages du projet</h3>

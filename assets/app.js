@@ -121,7 +121,7 @@ async function projectMedia(ids) {
   return out;
 }
 const pairsOf = m => m.before.map(b => ({ before: b, after: m.after.find(a => a.position === b.position) || null }));
-const bestPair = m => { const p = pairsOf(m); return p.find(x => x.after) || p[0] || null; };
+const bestPair = m => { const p = pairsOf(m); return p.find(x => x.after) || p[0] || (m.after[0] ? { before: null, after: m.after[0] } : null); };
 
 async function likeInfo(ids, uid) {
   const info = {};
@@ -221,12 +221,13 @@ function renderNav(user) {
 
   let tb = $('#tabbar');
   if (!tb) { tb = document.createElement('nav'); tb.id = 'tabbar'; tb.className = 'tabbar'; tb.setAttribute('aria-label', 'Navigation mobile'); document.body.appendChild(tb); }
+  const tabAvatar = user && ME && ME.avatar_path ? avatarHTML(ME, 'sm') : null;
   const items = [
-    [BASE + 'index.html', '🏠', 'Accueil', isHome && !location.hash, ''],
-    [BASE + 'index.html#outils', '🧰', 'Outils', false, ''],
-    [BASE + 'rangement/?nouveau=1', '➕', 'Créer', false, 'create'],
-    [BASE + 'badges/', '🏅', 'Badges', path.includes('/badges/'), ''],
-    [user ? BASE + 'profil/' : BASE + 'connexion/', '👤', user ? 'Profil' : 'Connexion', path.includes('/profil/') || path.includes('/connexion/'), '']
+    [BASE + 'index.html', icon('home'), 'Accueil', isHome && !location.hash, ''],
+    [BASE + 'index.html#outils', icon('grid'), 'Outils', false, ''],
+    [BASE + 'rangement/?nouveau=1', icon('plus'), 'Créer', false, 'create'],
+    [BASE + 'badges/', icon('badge'), 'Badges', path.includes('/badges/'), ''],
+    [user ? BASE + 'profil/' : BASE + 'connexion/', tabAvatar || icon('user'), user ? 'Profil' : 'Connexion', path.includes('/profil/') || path.includes('/connexion/'), '']
   ];
   tb.innerHTML = items.map(([h, i, t, on, c]) => `<a class="${c}" href="${h}"${on ? ' aria-current="page"' : ''}><span class="i">${i}</span>${t}</a>`).join('');
 }
@@ -272,4 +273,33 @@ async function withBadgeDiff(uid, action) {
   const fresh = [...after].filter(c => !before.has(c));
   if (fresh.length) await showBadgePopup(fresh);
   return res;
+}
+
+/* ---------- Icônes de la barre d'onglets ---------- */
+const ICONS = {
+  home: '<path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
+  plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  badge: '<circle cx="12" cy="9" r="5.2"/><path d="M8.6 13.6 7 21l5-3 5 3-1.6-7.4"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4.5 21c.4-4 3.5-6.5 7.5-6.5s7.1 2.5 7.5 6.5"/>'
+};
+const icon = n => `<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">${ICONS[n]}</svg>`;
+
+/* Image seule (projet sans photo « avant ») */
+function singleHTML(url, label, extra = '') {
+  if (!url) return '';
+  return `<div class="ba single ${extra}"><img src="${esc(url)}" alt="${esc(label)}" loading="lazy"><span class="ba-tag ${label === 'Après' ? 'r' : 'l'}">${esc(label)}</span></div>`;
+}
+
+/* Astuce « Sur l'écran d'accueil » pour iPhone (une seule fois) */
+function installHint(container) {
+  try {
+    const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!iOS || navigator.standalone || localStorage.getItem('eyl_hint') === '1' || !container) return;
+    const el = document.createElement('div');
+    el.className = 'banner';
+    el.innerHTML = `📲 <b>Utilise-la comme une appli</b> : appuie sur <b>Partager</b> (le carré avec la flèche), puis <b>« Sur l'écran d'accueil »</b>. <button type="button" class="link" id="hint-x">Compris</button>`;
+    container.prepend(el);
+    $('#hint-x', el).onclick = () => { try { localStorage.setItem('eyl_hint', '1'); } catch (e) {} el.remove(); };
+  } catch (e) {}
 }
