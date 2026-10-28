@@ -1,51 +1,59 @@
 # ✨ EasyYourLife
 
-Un site-hub de petits outils pour se simplifier la vie, en français.
-Premier outil : **Ranger & décorer** (une pièce tirée au sort, un plan complet, des idées d'impression 3D sans perçage, des alternatives DIY et de la déco pas chère).
+Des outils gratuits pour se simplifier la vie, avec comptes, amis, badges, likes et photos — un peu comme un petit réseau social.
+Premier outil : **Ranger & décorer** (photos de ta pièce → plan personnalisé par IA → avant / après).
 
-Comptes, amis, badges et photos : fonctionnent avec **Supabase** (gratuit). Le site est statique et hébergé sur **GitHub Pages**.
+Site statique sur **GitHub Pages** + **Supabase** (comptes, base, photos, fonction IA).
 
 ## Structure
 
 ```
-index.html            Accueil : une carte par outil
-connexion/            Inscription et connexion
-rangement/            Outil 1 : Ranger & décorer
-profil/               Profil, badges, photos et amis
-badges/               Catalogue des badges
-assets/style.css      Styles et les 7 thèmes
-assets/theme.js       Choix du thème, couleur d'accent, taille du texte, animations
-assets/app.js         Connexion Supabase + fonctions communes + liste des outils
-assets/rooms.js       Pièces, étapes et idées
+index.html          Accueil : outils + fil des amis / Découvrir
+connexion/          Inscription et connexion
+rangement/          Outil 1 : liste des projets et tunnel en 5 étapes
+projet/             Page d'un projet : avant/après, likes, épingler, visibilité
+profil/             Profil : photo, à la une, projets, badges, amis
+badges/             Catalogue des badges
+assets/style.css    Styles et 7 thèmes
+assets/theme.js     Panneau de personnalisation (bouton 🎨)
+assets/app.js       Connexion Supabase + fonctions communes + liste des outils
+assets/rooms.js     Pièces et plan « classique » (sans IA)
 ```
 
-## Ajouter un nouvel outil
+## Activer l'IA (plan personnalisé à partir des photos)
 
-1. Crée un dossier, par exemple `mon-outil/index.html` (copie `rangement/index.html` comme base).
-2. Ajoute une ligne dans `TOOLS` (fichier `assets/app.js`) : la carte apparaît sur l'accueil.
-3. Pour donner des badges : ajoute des lignes dans la table `badges` (Supabase) et, si besoin, des règles dans la fonction `award_badges`.
+La fonction `room-plan` est déjà déployée sur Supabase. Il manque une clé d'API, à ajouter **dans Supabase** :
+**Edge Functions → Secrets** (ou Project Settings → Edge Functions), puis :
 
-## Réglages Supabase à faire une fois
+| Secret | Rôle |
+|---|---|
+| `ANTHROPIC_API_KEY` | Clé de l'API Anthropic (option recommandée, payante à l'usage). |
+| `AI_MODEL` | Facultatif. Par défaut `claude-haiku-5-5`. |
+| `AI_USER_DAILY_LIMIT` | Facultatif. Plans IA par membre et par jour (défaut 5). |
+| `AI_GLOBAL_DAILY_LIMIT` | Facultatif. Plafond global par jour (défaut 100). |
 
-Dans le tableau de bord Supabase, section **Authentication → URL Configuration** :
+Alternative de test : `GEMINI_API_KEY` + `AI_MODEL` (nom du modèle Gemini à jour). Attention : le palier gratuit de Google
+n'est pas prévu pour servir des utilisateurs situés dans l'EEE et peut réutiliser les contenus envoyés.
 
-- **Site URL** : l'adresse de ton site GitHub Pages (par exemple `https://denizwlzb.github.io/easyyourlife/`)
-- **Redirect URLs** : la même adresse avec `/**` à la fin
+Sans clé, le site reste utilisable : le bouton « Plan classique » prend le relais.
 
-Dans **Authentication → Providers → Email**, tu peux désactiver « Confirm email » pour tester plus vite (à réactiver ensuite).
+## Ajouter un outil
+
+1. Crée un dossier (par exemple `mon-outil/index.html`).
+2. Ajoute une ligne dans `TOOLS` (`assets/app.js`) : il apparaît sur l'accueil et dans les stories d'outils.
+3. Ses photos épinglées se rangent automatiquement dans un « à la une » à son nom sur les profils (champ `tool` des photos).
+
+## Thèmes
+
+Le bouton 🎨 de la barre du haut ouvre le panneau : 7 thèmes, mode automatique, couleur d'accent, taille du texte, animations.
+Pour ajouter un thème : un bloc `:root[data-theme="nom"]` dans `assets/style.css` et une entrée dans `THEMES` (`assets/theme.js`).
+
+## Réglages Supabase (une fois)
+
+- **Authentication → URL Configuration** : Site URL = l'adresse de ton site GitHub Pages ; Redirect URLs = la même avec `/**`.
+- **Authentication → Providers → Email** : activer la protection contre les mots de passe compromis.
 
 ## Sécurité
 
-- La clé utilisée dans `assets/app.js` est la clé **anon** : elle est faite pour être publique.
-- Les données sont protégées par les règles de sécurité (RLS) de la base : chacun ne voit que ses données, et celles de ses amis acceptés.
-- Ne mets **jamais** la clé `service_role` dans ce dépôt.
-
-## Thèmes et personnalisation
-
-Le bouton « 🎨 Style » de la barre du haut ouvre le panneau de personnalisation :
-7 thèmes (Atelier, Nuit néon, Sakura, Forêt, Océan, Brut, Arcade) plus un mode automatique,
-une couleur d'accent au choix, la taille du texte et l'option d'arrêter les animations.
-Les choix sont gardés sur l'appareil (localStorage).
-
-Pour ajouter un thème : un bloc `:root[data-theme="mon-theme"]` dans `assets/style.css`
-et une entrée dans la liste `THEMES` de `assets/theme.js`.
+- La clé de `assets/app.js` est la clé **anon** (publique par conception). Les données sont protégées par les règles RLS de la base.
+- Ne mets jamais la clé `service_role` ni une clé d'IA dans ce dépôt : elles vivent uniquement dans les secrets Supabase.

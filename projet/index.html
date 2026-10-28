@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Projet – EasyYourLife</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/theme.js"></script>
+</head>
+<body data-base="../">
+<header id="nav"></header>
+<main class="wrap" id="main"><p class="muted">Chargement…</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../assets/app.js"></script>
+<script src="../assets/rooms.js"></script>
+<script>
+(async () => {
+  const user = await initPage();
+  if (!user) { location.replace('../connexion/'); return; }
+  const main = $('#main');
+  const id = new URLSearchParams(location.search).get('id');
+  const notFound = '<div class="card empty"><span class="big-emoji">🔍</span><h2>Projet introuvable</h2><p class="muted">Il n\'existe pas, ou son auteur ne l\'a pas partagé avec toi.</p><a class="btn" href="../index.html">Retour à l\'accueil</a></div>';
+  const { data: p } = id ? await sb.from('projects').select('*').eq('id', id).maybeSingle() : { data: null };
+  if (!p) { main.innerHTML = notFound; return; }
+  const isMe = p.user_id === user.id;
+  const [own, media, likes] = await Promise.all([
+    sb.from('profiles').select('id,username,avatar_path').eq('id', p.user_id).maybeSingle(),
+    projectMedia([p.id]), likeInfo([p.id], user.id)
+  ]);
+  const owner = own.data || { username: 'membre' }, m = media[p.id];
+  let L = likes[p.id];
+  const urls = await signedMap([...m.before, ...m.after].map(x => x.storage_path));
+  const room = ROOMS.find(r => r.id === p.room);
+  const VIS = { private: ['🔒', 'Privé', 'Seulement toi'], friends: ['👥', 'Mes amis', 'Sur ton profil et dans leur fil'], public: ['🌍', 'Tous les membres', 'Sur ton profil et dans le fil « Découvrir »'] };
+  document.title = `${p.title} – EasyYourLife`;
+
+  function planHTML() {
+    const pl = p.plan; if (!pl || !Array.isArray(pl.etapes)) return '';
+    const checked = (p.progress && p.progress.checked) || {};
+    return `<details class="card"><summary><b>${p.plan_source === 'ia' ? '✨ Plan personnalisé' : '📋 Plan classique'}</b></summary>
+      ${pl.resume ? `<p>${esc(pl.resume)}</p>` : ''}
+      <ol class="plan-steps">${pl.etapes.map((e, ei) => `<li><b>${esc(e.titre)}</b><ul>${(e.taches || []).map((t, ti) => `<li>${checked[ei + '-' + ti] ? '✅' : '▫️'} ${esc(t)}</li>`).join('')}</ul></li>`).join('')}</ol>
+    </details>`;
+  }
+
+  function render() {
+    const pairs = pairsOf(m);
+    const sliders = pairs.map((pr, i) => {
+      const bu = urls[pr.before.storage_path], au = pr.after ? urls[pr.after.storage_path] : null;
+      const pins = isMe ? `<div class="actions" style="margin:8px 0 0">
+          <button type="button" class="pin" data-pin="${pr.before.id}" aria-pressed="${pr.before.pinned}">📌 Avant</button>
+          ${pr.after ? `<button type="button" class="pin" data-pin="${pr.after.id}" aria-pressed="${pr.after.pinned}">📌 Après</button>` : ''}</div>` : '';
+      return `<div style="margin-bottom:22px">${sliderHTML(bu, au, 'round')}<p class="muted" style="margin:6px 0 0">${pr.before.angle ? esc(pr.before.angle) : 'Photo ' + (i + 1)}</p>${pins}</div>`;
+    }).join('');
+    const done = p.status === 'done';
+    main.innerHTML = `
+      <div class="room-head" style="margin-bottom:14px">
+        <a href="../profil/?u=${encodeURIComponent(owner.username)}">${avatarHTML(owner, 'md')}</a>
+        <div><h1 style="font-size:clamp(1.5rem,5vw,2.3rem);margin:0">${esc(p.title)}</h1>
+        <p class="muted" style="margin:0"><a href="../profil/?u=${encodeURIComponent(owner.username)}">${esc(owner.username)}</a> · ${room ? room.emoji + ' ' + esc(room.nom) : ''} · ${ago(p.completed_at || p.created_at)}${done ? '' : ' <span class="status-pill">en cours</span>'}</p></div>
+      </div>
+      ${p.caption ? `<p>${esc(p.caption)}</p>` : ''}
+      ${sliders || '<div class="card empty"><p class="muted">Pas encore de photos.</p></div>'}
+      <div class="post-actions" style="margin:6px 0 18px"><button type="button" class="like" id="like" aria-pressed="${L.mine}"><span class="h">${L.mine ? '❤️' : '🤍'}</span><span class="n">${L.n}</span></button></div>
+      ${planHTML()}
+      ${isMe ? `<div class="card"><h3>Réglages du projet</h3>
+        ${done ? `<p class="muted">Qui peut voir ce projet ?</p><div class="vis-opts">${Object.entries(VIS).map(([k, v]) => `<label class="vis"><input type="radio" name="vis" value="${k}" ${p.visibility === k ? 'checked' : ''}><span><b>${v[0]} ${v[1]}</b><small>${v[2]}</small></span></label>`).join('')}</div>
+        <label class="field"><span>Légende</span><textarea id="caption" rows="2" maxlength="300">${esc(p.caption || '')}</textarea></label>
+        <button class="btn" id="save">Enregistrer</button>` : `<a class="btn" href="../rangement/?p=${p.id}">Continuer le projet →</a>`}
+        <button class="btn danger" id="del" style="margin-left:8px">Supprimer</button></div>` : ''}`;
+    initSliders(main);
+  }
+  render();
+
+  main.addEventListener('click', async e => {
+    if (e.target.closest('#like')) {
+      const b = e.target.closest('#like'); const liked = b.getAttribute('aria-pressed') === 'true';
+      const { error } = await toggleLike(p.id, user.id, liked);
+      if (error) return toast('Oups : ' + error.message);
+      L = { n: Math.max(0, L.n + (liked ? -1 : 1)), mine: !liked }; render(); return;
+    }
+    const pin = e.target.closest('[data-pin]');
+    if (pin) {
+      const item = [...m.before, ...m.after].find(x => x.id === pin.dataset.pin); if (!item) return;
+      const next = !item.pinned;
+      const res = await withBadgeDiff(user.id, () => sb.from('media').update({ pinned: next }).eq('id', item.id));
+      if (res && res.error) return;
+      item.pinned = next; toast(next ? 'Épinglé à la une 📌' : 'Retiré de la une'); render(); return;
+    }
+    if (e.target.id === 'save') {
+      const vis = (main.querySelector('input[name=vis]:checked') || {}).value || p.visibility;
+      const caption = $('#caption').value.trim();
+      const { error } = await sb.from('projects').update({ visibility: vis, caption: caption || null }).eq('id', p.id);
+      if (error) return toast('Oups : ' + error.message);
+      p.visibility = vis; p.caption = caption || null; toast('Enregistré ✅'); render(); return;
+    }
+    if (e.target.id === 'del') {
+      if (!confirm('Supprimer ce projet et toutes ses photos ? C\'est définitif.')) return;
+      const paths = [...m.before, ...m.after].map(x => x.storage_path);
+      if (paths.length) await sb.storage.from('media').remove(paths);
+      const { error } = await sb.from('projects').delete().eq('id', p.id);
+      if (error) return toast('Oups : ' + error.message);
+      location.href = '../rangement/';
+    }
+  });
+})();
+</script>
+</body>
+</html>

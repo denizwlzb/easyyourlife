@@ -9,203 +9,355 @@
 </head>
 <body data-base="../">
 <header id="nav"></header>
-<main class="wrap">
-  <div id="login-banner" class="banner" hidden></div>
-  <section class="card roulette">
-    <h1>🏠 Ranger &amp; décorer</h1>
-    <p class="muted">Appuie sur le bouton : une pièce est tirée au sort et tu reçois un plan complet, étape par étape.</p>
-    <div id="slot" class="slot" aria-live="polite">🎲</div>
-    <button id="btn-roll" class="btn big">🎲 Tirer une pièce</button>
-    <div id="chips" class="chips" aria-label="Choisir une pièce"></div>
-  </section>
-  <section id="room" hidden></section>
-</main>
+<main class="wrap" id="main"><p class="muted">Chargement…</p></main>
+<input type="file" id="file" accept="image/*" hidden>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="../assets/app.js"></script>
 <script src="../assets/rooms.js"></script>
 <script>
 (async () => {
   const user = await initPage();
-  const KEY = 'eyl_progress_v1', RKEY = 'eyl_recent_v1';
-  const read = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
-  const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-  let progress = read(KEY, {});
-  const rp = id => (progress[id] = progress[id] || { checked: {}, synced: {}, done: false });
-  let current = null;
+  const main = $('#main');
+  const qs = new URLSearchParams(location.search);
+  const ANGLES = ["Vue d'ensemble depuis la porte", 'Coin gauche', 'Coin droit', 'Mur du fond', 'Le sol', 'Plan de travail ou bureau', 'Placard ou tiroirs ouverts', 'Le plus gros bazar'];
+  const STATUS_LABEL = { draft: 'Photos à prendre', planned: 'Plan prêt', doing: 'En cours', after: 'Photos après', done: 'Terminé' };
+  const STEPS = ['Photos', 'Plan', 'Action', 'Après', 'Résultat'];
+  const AI_ERR = {
+    ai_not_configured: "L'IA n'est pas encore activée sur ce site. Tu peux utiliser le plan classique en attendant.",
+    ai_model_missing: "L'IA n'est pas encore entièrement configurée. Utilise le plan classique en attendant.",
+    user_limit: "Tu as atteint la limite de plans IA pour aujourd'hui. Réessaie demain ou utilise le plan classique.",
+    global_limit: "Le service IA est très demandé aujourd'hui. Réessaie plus tard ou utilise le plan classique.",
+    no_photos: 'Ajoute au moins une photo avant de générer le plan.',
+    photos_unreadable: "L'IA n'a pas pu lire tes photos. Essaie d'en reprendre quelques-unes.",
+    ai_failed: "L'IA n'a pas pu créer le plan. Réessaie, ou utilise le plan classique."
+  };
+  const A = v => Array.isArray(v) ? v : [];
+  const normPlan = pl => {
+    pl = pl && typeof pl === 'object' ? pl : {};
+    return {
+      resume: String(pl.resume || ''), duree_totale_min: pl.duree_totale_min || null, budget_total: String(pl.budget_total || ''),
+      etapes: A(pl.etapes).map(e => ({ titre: String((e && e.titre) || ''), taches: A(e && e.taches).map(String) })).filter(e => e.titre && e.taches.length),
+      imprimante: A(pl.imprimante), diy: A(pl.diy), deco: A(pl.deco)
+    };
+  };
+
+  const how = () => `<div class="grid" style="margin:18px 0 6px">
+    <div class="card" style="margin:0"><div class="big-emoji">📸</div><h3>Photographie</h3><p class="muted">Ta pièce sous un maximum d'angles.</p></div>
+    <div class="card" style="margin:0"><div class="big-emoji">🤖</div><h3>Reçois ton plan</h3><p class="muted">Une IA regarde ce qu'il y a vraiment dans ta pièce.</p></div>
+    <div class="card" style="margin:0"><div class="big-emoji">🪄</div><h3>Compare</h3><p class="muted">Ton avant / après, à montrer ou à garder pour toi.</p></div></div>`;
 
   if (!user) {
-    const b = $('#login-banner'); b.hidden = false;
-    b.innerHTML = '🔒 <a href="../connexion/">Connecte-toi</a> pour gagner des badges, ajouter des photos et retrouver tes amis. Ta progression est déjà sauvegardée sur cet appareil.';
+    main.innerHTML = `<section class="hero"><h1 style="max-width:14ch">Un plan fait pour ta pièce.</h1>
+      <p class="lead">Prends ta pièce en photo, reçois un plan d'organisation personnalisé, puis compare l'avant et l'après.</p>${how()}
+      <div class="cta-row" style="margin-top:20px"><a class="btn big" href="../connexion/">Créer mon compte pour commencer</a></div></section>`;
+    return;
   }
 
-  function renderChips() {
-    $('#chips').innerHTML = ROOMS.map(r => {
-      const d = rp(r.id).done;
-      return `<button class="chip ${d ? 'done' : ''} ${current && current.id === r.id ? 'on' : ''}" data-id="${r.id}">${r.emoji} ${esc(r.nom)}${d ? ' ✓' : ''}</button>`;
-    }).join('');
+  /* ================= LISTE DES PROJETS ================= */
+  async function list() {
+    const { data } = await sb.from('projects').select('id,room,title,status,created_at').eq('user_id', user.id).order('created_at', { ascending: false });
+    const projs = data || [];
+    const media = await projectMedia(projs.map(p => p.id));
+    const covers = {};
+    projs.forEach(p => { const b = bestPair(media[p.id]); covers[p.id] = b ? (b.after || b.before).storage_path : null; });
+    const urls = await signedMap(Object.values(covers));
+    main.innerHTML = `
+      <section class="hero" style="padding-bottom:6px"><h1 style="font-size:clamp(2rem,7vw,3.4rem);max-width:16ch">Ranger &amp; décorer</h1>
+        <p class="lead">Un plan d'organisation fait pour ta pièce, à partir de tes photos.</p>${how()}</section>
+      <div class="card" id="new"><h2>Nouveau projet</h2>
+        <form id="new-form">
+          <label class="field"><span>Quelle pièce ?</span><select id="room">${ROOMS.map(r => `<option value="${r.id}">${r.emoji} ${esc(r.nom)}</option>`).join('')}</select></label>
+          <label class="field"><span>Nom du projet (facultatif)</span><input type="text" id="title" maxlength="80" placeholder="Projet ${esc(ROOMS[0].nom.toLowerCase())}"></label>
+          <button class="btn" type="submit">Commencer</button>
+        </form></div>
+      <h2 class="section-title">Mes projets</h2>
+      ${projs.length ? `<div class="proj-grid">${projs.map(p => {
+        const r = ROOMS.find(x => x.id === p.room) || ROOMS[0];
+        const u = covers[p.id] ? urls[covers[p.id]] : null;
+        const href = p.status === 'done' ? `../projet/?id=${p.id}` : `?p=${p.id}`;
+        return `<a class="proj" href="${href}"><div class="cover">${u ? `<img src="${esc(u)}" alt="" loading="lazy">` : r.emoji}</div><div class="meta"><b>${esc(p.title)}</b><span class="status-pill">${STATUS_LABEL[p.status] || ''}</span></div></a>`;
+      }).join('')}</div>` : `<div class="card empty"><span class="big-emoji">📸</span><p class="muted">Aucun projet pour l'instant. Lance le premier ci-dessus.</p></div>`}`;
+    const sel = $('#room'), title = $('#title');
+    sel.onchange = () => { const r = ROOMS.find(x => x.id === sel.value); title.placeholder = 'Projet ' + r.nom.toLowerCase(); };
+    $('#new-form').onsubmit = async e => {
+      e.preventDefault();
+      const r = ROOMS.find(x => x.id === sel.value);
+      const { data: row, error } = await sb.from('projects').insert({ user_id: user.id, tool: 'rangement', room: r.id, title: title.value.trim() || ('Projet ' + r.nom.toLowerCase()) }).select('id').single();
+      if (error) return toast('Oups : ' + error.message);
+      location.href = '?p=' + row.id;
+    };
+    if (qs.get('nouveau')) { $('#new').scrollIntoView(); title.focus(); }
   }
 
-  function renderRoom() {
-    const r = current, p = rp(r.id);
-    const etapes = r.etapes.map((e, ei) => `<div class="etape" data-e="${ei}"><h3><span class="num">${ei + 1}</span>${esc(e.titre)}</h3><ul class="tasks">${e.taches.map((t, ti) => {
-      const k = ei + '-' + ti;
-      return `<li><label><input type="checkbox" class="chk" data-k="${k}" ${p.checked[k] ? 'checked' : ''}><span>${esc(t)}</span></label></li>`;
-    }).join('')}</ul></div>`).join('');
-    const imp = `<div class="tip">💡 Sans perçage : adhésif double face (type bandes réutilisables), clip sur un bord, encoche ou simple pose. PLA en intérieur, PETG ou ASA pour la salle de bain et l'extérieur.</div>` +
-      r.imprimante.map(i => `<article class="idea"><h4>🖨️ ${esc(i.nom)}</h4><p>${esc(i.desc)}</p><span class="tag">Fixation : ${esc(i.fixation)}</span><p><a href="https://www.printables.com/search/models?q=${encodeURIComponent(i.recherche)}" target="_blank" rel="noopener">Chercher un modèle à imprimer →</a></p></article>`).join('');
-    const diy = `<div class="tip">🛠️ Pas d'imprimante 3D ? Ces alternatives font le même travail, souvent avec des objets récupérés.</div>` +
-      r.diy.map(i => `<article class="idea"><h4>🔧 ${esc(i.nom)}</h4><p>${esc(i.desc)}</p><span class="tag">Budget : ${esc(i.cout)}</span></article>`).join('');
-    const deco = `<div class="tip">🎨 Des idées à petit prix pour changer l'ambiance sans te ruiner.</div>` +
-      r.deco.map(i => `<article class="idea"><h4>✨ ${esc(i.nom)}</h4><p>${esc(i.desc)}</p><span class="tag">Budget : ${esc(i.budget)}</span></article>`).join('');
-    const photo = user
-      ? `<h3>📸 Ajoute ta photo</h3><p class="muted">Idéal pour un avant / après. Elle reste privée tant que tu ne changes pas la visibilité.</p>
-         <label class="field"><span>Photo</span><input type="file" id="photo-file" accept="image/*"></label>
-         <label class="field"><span>Légende (facultatif)</span><input type="text" id="photo-caption" maxlength="200"></label>
-         <label class="field"><span>Qui peut la voir ?</span><select id="photo-vis"><option value="private">Moi seulement</option><option value="friends">Mes amis</option><option value="public">Tous les membres</option></select></label>
-         <button class="btn" id="btn-upload">Envoyer la photo</button>`
-      : `<h3>📸 Photos</h3><p class="muted"><a href="../connexion/">Connecte-toi</a> pour ajouter tes photos avant/après.</p>`;
-    $('#room').hidden = false;
-    $('#room').innerHTML = `<div class="card">
-      <div class="room-head"><div class="big-emoji">${r.emoji}</div><div><h2>${esc(r.nom)}</h2><p class="muted">${esc(r.accroche)}</p></div></div>
-      <div class="progress"><div class="segs" id="segs" aria-hidden="true">${r.etapes.map(() => '<i><b></b></i>').join('')}</div><b id="pct">0 %</b></div>
-      <div class="tabs" role="tablist">
-        <button class="tab" data-tab="plan" aria-selected="true">📋 Plan</button>
-        <button class="tab" data-tab="3d" aria-selected="false">🖨️ Impression 3D</button>
-        <button class="tab" data-tab="diy" aria-selected="false">🔧 Sans imprimante</button>
-        <button class="tab" data-tab="deco" aria-selected="false">✨ Déco pas chère</button>
-      </div>
-      <div class="panel" data-panel="plan">${etapes}</div>
-      <div class="panel" data-panel="3d" hidden>${imp}</div>
-      <div class="panel" data-panel="diy" hidden>${diy}</div>
-      <div class="panel" data-panel="deco" hidden>${deco}</div>
-      <div class="actions"><button class="btn" id="btn-finish" disabled>✅ Terminer cette pièce</button><button class="btn ghost" id="btn-reset">↺ Recommencer</button></div>
-    </div>
-    <div class="card">${photo}</div>`;
-    updateProgress();
-  }
+  /* ================= TUNNEL D'UN PROJET ================= */
+  async function wizard(pid) {
+    const { data: proj } = await sb.from('projects').select('*').eq('id', pid).maybeSingle();
+    if (!proj || proj.user_id !== user.id) { main.innerHTML = '<div class="card empty"><span class="big-emoji">🔍</span><h2>Projet introuvable</h2><a class="btn" href="./">Mes projets</a></div>'; return; }
+    if (proj.status === 'done') { location.replace('../projet/?id=' + proj.id); return; }
+    let project = proj;
+    project.plan = project.plan ? normPlan(project.plan) : null;
+    project.progress = project.progress && project.progress.checked ? project.progress : { checked: {} };
+    const room = ROOMS.find(r => r.id === project.room) || ROOMS[0];
 
-  function updateProgress() {
-    const p = rp(current.id);
-    const boxes = $$('#room input[type=checkbox]');
-    const done = boxes.filter(b => b.checked).length;
-    const pct = boxes.length ? Math.round(done / boxes.length * 100) : 0;
-    $('#pct').textContent = pct + ' %';
-    $$('#segs i b').forEach((b, ei) => { const es = current.etapes[ei]; const n = es.taches.filter((_, ti) => p.checked[ei + '-' + ti]).length; b.style.width = Math.round(n / es.taches.length * 100) + '%'; });
-    $$('#room .etape').forEach(el => el.classList.toggle('ok', $$('input', el).every(i => i.checked)));
-    const fin = $('#btn-finish');
-    fin.disabled = p.done || pct < 100;
-    fin.textContent = p.done ? '✓ Pièce terminée' : '✅ Terminer cette pièce';
-  }
+    const medias = { before: [], after: [] };
+    const mres = await sb.from('media').select('id,storage_path,kind,angle,position').eq('project_id', project.id).in('kind', ['before', 'after']).order('position');
+    (mres.data || []).forEach(m => medias[m.kind].push(m));
+    let urls = {};
+    const refreshUrls = async () => { urls = await signedMap([...medias.before, ...medias.after].map(m => m.storage_path)); };
+    await refreshUrls();
 
-  function selectRoom(id, scroll) {
-    current = ROOMS.find(r => r.id === id);
-    renderChips(); renderRoom();
-    if (scroll) $('#room').scrollIntoView({ behavior: 'smooth' });
-  }
+    let showGen = false, generating = false, planError = '', pickCtx = null, busy = false, saveT = null;
+    const reach = () => {
+      switch (project.status) {
+        case 'draft': return medias.before.length >= 3 ? 1 : 0;
+        case 'planned': case 'doing': return 2;
+        case 'after': return medias.after.length >= 1 ? 4 : 3;
+        default: return 4;
+      }
+    };
+    let step = project.status === 'planned' ? 1 : reach();
+    const nextPos = () => medias.before.reduce((m, x) => Math.max(m, x.position), -1) + 1;
+    const sortMedia = () => { medias.before.sort((a, b) => a.position - b.position); medias.after.sort((a, b) => a.position - b.position); };
 
-  function roll() {
-    const recent = read(RKEY, []);
-    let pool = ROOMS.filter(r => !recent.includes(r.id));
-    const todo = pool.filter(r => !rp(r.id).done);
-    if (todo.length) pool = todo;
-    if (!pool.length) pool = ROOMS;
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    const btn = $('#btn-roll'), slot = $('#slot');
-    btn.disabled = true;
-    let i = 0;
-    const t = setInterval(() => { slot.textContent = ROOMS[i++ % ROOMS.length].emoji; }, 90);
-    setTimeout(() => {
-      clearInterval(t);
-      slot.textContent = pick.emoji + ' ' + pick.nom;
-      btn.disabled = false;
-      write(RKEY, [pick.id, ...recent].slice(0, 3));
-      selectRoom(pick.id, true);
-    }, 1500);
-  }
-
-  async function onCheck(k, checked) {
-    const p = rp(current.id);
-    if (checked) p.checked[k] = true; else delete p.checked[k];
-    write(KEY, progress);
-    updateProgress();
-    const ei = +k.split('-')[0], e = current.etapes[ei];
-    const all = e.taches.every((_, ti) => p.checked[ei + '-' + ti]);
-    if (all && !p.synced[ei] && user) {
-      p.synced[ei] = true; write(KEY, progress);
-      await withBadgeDiff(user.id, () => sb.from('missions_done').insert({ user_id: user.id, tool: 'rangement', room: current.id, title: e.titre }));
+    /* ----- Étape 1 : photos ----- */
+    function bodyPhotos() {
+      const n = medias.before.length;
+      const tiles = ANGLES.map(a => {
+        const m = medias.before.find(x => x.angle === a);
+        return `<div class="angle ${m ? 'has' : ''}"><button type="button" class="angle-main" data-act="pick" data-angle="${esc(a)}">${m && urls[m.storage_path] ? `<img src="${esc(urls[m.storage_path])}" alt="">` : '<span class="plus">📷</span>'}<b>${esc(a)}</b><small class="muted">${m ? 'Remplacer' : 'Ajouter'}</small></button>${m ? `<button type="button" class="angle-del" data-act="del" data-id="${m.id}" aria-label="Supprimer cette photo">✕</button>` : ''}</div>`;
+      }).join('');
+      const extras = medias.before.filter(m => !m.angle).map(m => `<div class="angle has"><div class="angle-main">${urls[m.storage_path] ? `<img src="${esc(urls[m.storage_path])}" alt="">` : ''}<b>Autre photo</b></div><button type="button" class="angle-del" data-act="del" data-id="${m.id}" aria-label="Supprimer cette photo">✕</button></div>`).join('');
+      return `<div class="card"><h2>Prends ta pièce en photo</h2>
+        <p class="muted">Plus tu donnes d'angles, plus le plan sera précis. Vise au moins 3 photos, 8 au maximum. Évite d'y mettre des personnes. <b>${n} / 8</b></p>
+        <div class="angle-grid">${tiles}${extras}</div>
+        <div class="actions"><button type="button" class="btn ghost" data-act="pick-free" ${n >= 8 ? 'disabled' : ''}>＋ Autre photo</button>
+        <button type="button" class="btn" data-act="next" ${n < 3 ? 'disabled' : ''}>Continuer →</button></div>
+        ${n < 3 ? `<p class="muted" style="margin-top:10px">Encore ${3 - n} photo${3 - n > 1 ? 's' : ''} pour continuer.</p>` : ''}</div>`;
     }
-  }
 
-  async function finish() {
-    const p = rp(current.id);
-    p.done = true; write(KEY, progress); updateProgress(); renderChips(); confetti();
-    if (!user) { showModal('<h2>🎉 Bravo !</h2><p>Pièce terminée. <a href="../connexion/">Crée un compte</a> pour gagner des badges et les montrer à tes amis.</p>'); return; }
-    let nouveau = false;
-    await withBadgeDiff(user.id, async () => {
-      const res = await sb.from('rooms_completed').upsert({ user_id: user.id, room: current.id }, { onConflict: 'user_id,room', ignoreDuplicates: true });
-      nouveau = !res.error; return res;
-    });
-    if (!$('#modal') || $('#modal').hidden) toast('Pièce terminée ! 🎉');
-  }
+    /* ----- Étape 2 : plan ----- */
+    function planSummary() {
+      const p = project.plan, ia = project.plan_source === 'ia';
+      return `<h2>${ia ? '✨ Ton plan personnalisé' : '📋 Plan classique'}</h2>${p.resume ? `<p>${esc(p.resume)}</p>` : ''}
+        <p>${p.duree_totale_min ? `<span class="tag">⏱️ environ ${esc(p.duree_totale_min)} min</span> ` : ''}${p.budget_total ? `<span class="tag">💶 ${esc(p.budget_total)}</span> ` : ''}<span class="tag">${p.etapes.length} étapes</span></p>
+        <ol class="plan-steps">${p.etapes.map(e => `<li><b>${esc(e.titre)}</b> <span class="muted">(${e.taches.length} tâches)</span></li>`).join('')}</ol>`;
+    }
+    function bodyPlan() {
+      if (generating) return `<div class="card"><h2>L'IA regarde tes photos…</h2><p><span class="spinner"></span>Ça prend en général 10 à 30 secondes.</p></div>`;
+      if (project.plan && !showGen) return `<div class="card">${planSummary()}<div class="actions"><button type="button" class="btn" data-act="next">Commencer le plan →</button><button type="button" class="btn ghost" data-act="replan">Refaire le plan</button></div></div>`;
+      return `<div class="card"><h2>Ton plan sur mesure</h2>
+        <p class="muted">Une IA regarde tes ${medias.before.length} photos et écrit un plan adapté à ce qu'elle voit : quoi ranger en premier, quoi imprimer, quoi bricoler, quoi décorer.</p>
+        <label class="field" style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="chk" id="consent"><span>J'accepte que mes photos soient envoyées à un service d'IA pour créer mon plan. Je n'y ai mis ni personne ni information privée.</span></label>
+        ${planError ? `<div class="msg err">${esc(planError)}</div>` : ''}
+        <div class="actions"><button type="button" class="btn" data-act="gen" id="btn-gen" disabled>✨ Générer mon plan</button>
+        <button type="button" class="btn ghost" data-act="classic">Plan classique (sans IA)</button>
+        ${project.plan ? '<button type="button" class="btn ghost" data-act="cancel-replan">Annuler</button>' : ''}</div></div>`;
+    }
+    async function generate() {
+      generating = true; planError = ''; render();
+      const { data, error } = await sb.functions.invoke('room-plan', { body: { project_id: project.id } });
+      generating = false;
+      if (error || !data || !data.plan) {
+        let code = 'ai_failed';
+        try { const j = await error.context.json(); code = (j && j.error) || code; } catch (e) {}
+        planError = AI_ERR[code] || AI_ERR.ai_failed; render(); return;
+      }
+      project.plan = normPlan(data.plan); project.plan_source = 'ia';
+      if (project.status === 'draft') project.status = 'planned';
+      showGen = false; render();
+    }
+    async function useClassic() {
+      const plan = { resume: `Plan classique pour ta pièce : ${room.accroche}`, duree_totale_min: null, budget_total: '', etapes: room.etapes.map(e => ({ titre: e.titre, taches: e.taches })), imprimante: room.imprimante, diy: room.diy, deco: room.deco };
+      const patch = { plan, plan_source: 'classique', plan_at: new Date().toISOString(), status: project.status === 'draft' ? 'planned' : project.status };
+      const { error } = await sb.from('projects').update(patch).eq('id', project.id);
+      if (error) return toast('Oups : ' + error.message);
+      project.plan = normPlan(plan); project.plan_source = 'classique'; project.status = patch.status; showGen = false; planError = ''; render();
+    }
 
-  function reset() {
-    if (!confirm('Recommencer cette pièce ? Tes badges déjà gagnés sont conservés.')) return;
-    progress[current.id] = { checked: {}, synced: {}, done: false };
-    write(KEY, progress); renderChips(); renderRoom();
-  }
-
-  function compressImage(file, max = 1600) {
-    return new Promise((resolve, reject) => {
-      const img = new Image(), url = URL.createObjectURL(file);
-      img.onload = () => {
-        const r = Math.min(1, max / Math.max(img.width, img.height));
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(url);
-        c.toBlob(b => b ? resolve(b) : reject(new Error('Compression impossible')), 'image/jpeg', 0.85);
-      };
-      img.onerror = () => reject(new Error('Image illisible'));
-      img.src = url;
-    });
-  }
-
-  async function upload() {
-    const file = $('#photo-file').files[0];
-    if (!file) return toast('Choisis une photo.');
-    const btn = $('#btn-upload'); btn.disabled = true; btn.textContent = 'Envoi…';
-    try {
-      const cap = $('#photo-caption').value.trim(), vis = $('#photo-vis').value;
-      const res = await withBadgeDiff(user.id, async () => {
-        const blob = await compressImage(file);
-        const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-        const up = await sb.storage.from('media').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
-        if (up.error) return up;
-        return await sb.from('media').insert({ user_id: user.id, storage_path: path, room: current.id, caption: cap || null, visibility: vis });
+    /* ----- Étape 3 : action ----- */
+    function bodyAction() {
+      const pl = project.plan; if (!pl) return '<div class="card"><p>Génère d\'abord ton plan.</p></div>';
+      const checked = project.progress.checked;
+      const etapes = pl.etapes.map((e, ei) => `<div class="etape" data-e="${ei}"><h3><span class="num">${ei + 1}</span>${esc(e.titre)}</h3><ul class="tasks">${e.taches.map((t, ti) => { const k = ei + '-' + ti; return `<li><label><input type="checkbox" class="chk" data-k="${k}" ${checked[k] ? 'checked' : ''}><span>${esc(t)}</span></label></li>`; }).join('')}</ul></div>`).join('');
+      const imp = `<div class="tip">💡 Sans perçage : adhésif double face réutilisable, clip sur un bord, encoche ou simple pose. PLA en intérieur, PETG ou ASA pour la salle de bain et l'extérieur.</div>` +
+        (pl.imprimante.length ? pl.imprimante.map(i => `<article class="idea"><h4>🖨️ ${esc(i.nom)}</h4><p>${esc(i.desc)}</p>${i.fixation ? `<span class="tag">Fixation : ${esc(i.fixation)}</span>` : ''}${i.recherche ? `<p><a href="https://www.printables.com/search/models?q=${encodeURIComponent(i.recherche)}" target="_blank" rel="noopener">Chercher un modèle à imprimer →</a></p>` : ''}</article>`).join('') : '<p class="muted">Pas d\'idée d\'impression pour ce plan.</p>');
+      const diy = `<div class="tip">🛠️ Pas d'imprimante 3D ? Ces alternatives font le même travail, souvent avec des objets récupérés.</div>` + pl.diy.map(i => `<article class="idea"><h4>🔧 ${esc(i.nom)}</h4><p>${esc(i.desc)}</p>${i.cout ? `<span class="tag">Budget : ${esc(i.cout)}</span>` : ''}</article>`).join('');
+      const deco = `<div class="tip">🎨 Des idées à petit prix pour changer l'ambiance sans te ruiner.</div>` + pl.deco.map(i => `<article class="idea"><h4>✨ ${esc(i.nom)}</h4><p>${esc(i.desc)}</p>${i.budget ? `<span class="tag">Budget : ${esc(i.budget)}</span>` : ''}</article>`).join('');
+      return `<div class="card">
+        <div class="progress"><div class="segs" id="segs" aria-hidden="true">${pl.etapes.map(() => '<i><b></b></i>').join('')}</div><b id="pct">0 %</b></div>
+        <div class="tabs" role="tablist">
+          <button type="button" class="tab" data-tab="plan" aria-selected="true">📋 Plan</button>
+          <button type="button" class="tab" data-tab="3d" aria-selected="false">🖨️ Impression 3D</button>
+          <button type="button" class="tab" data-tab="diy" aria-selected="false">🔧 Sans imprimante</button>
+          <button type="button" class="tab" data-tab="deco" aria-selected="false">✨ Déco pas chère</button></div>
+        <div class="panel" data-panel="plan">${etapes}</div>
+        <div class="panel" data-panel="3d" hidden>${imp}</div>
+        <div class="panel" data-panel="diy" hidden>${diy}</div>
+        <div class="panel" data-panel="deco" hidden>${deco}</div>
+        <div class="actions"><button type="button" class="btn" id="btn-after" data-act="to-after" disabled>📸 Passer aux photos « après »</button></div></div>`;
+    }
+    function updateProgress() {
+      const pl = project.plan; if (!pl || !$('#segs')) return;
+      const ch = project.progress.checked; let done = 0, total = 0;
+      $$('#segs i b').forEach((b, ei) => {
+        const e = pl.etapes[ei]; const n = e.taches.filter((_, ti) => ch[ei + '-' + ti]).length;
+        done += n; total += e.taches.length; b.style.width = Math.round(n / e.taches.length * 100) + '%';
       });
-      if (res && !res.error) { toast('Photo ajoutée ✅ Retrouve-la sur ton profil.'); $('#photo-file').value = ''; $('#photo-caption').value = ''; }
-    } catch (e) { toast('Oups : ' + e.message); }
-    finally { btn.disabled = false; btn.textContent = 'Envoyer la photo'; }
+      $$('.etape').forEach((el, ei) => el.classList.toggle('ok', pl.etapes[ei].taches.every((_, ti) => ch[ei + '-' + ti])));
+      const pct = total ? Math.round(done / total * 100) : 0;
+      $('#pct').textContent = pct + ' %'; $('#btn-after').disabled = pct < 100;
+    }
+    function saveProgress() {
+      clearTimeout(saveT);
+      saveT = setTimeout(async () => {
+        const patch = { progress: project.progress };
+        if (project.status === 'planned') { patch.status = 'doing'; project.status = 'doing'; }
+        const { error } = await sb.from('projects').update(patch).eq('id', project.id);
+        if (error) toast('Sauvegarde impossible : ' + error.message);
+      }, 500);
+    }
+
+    /* ----- Étape 4 : photos après ----- */
+    function bodyAfter() {
+      const rows = medias.before.map(b => {
+        const a = medias.after.find(x => x.position === b.position);
+        return `<div class="pair">
+          <figure><img src="${esc(urls[b.storage_path] || '')}" alt="Avant"><figcaption class="muted">Avant${b.angle ? ' · ' + esc(b.angle) : ''}</figcaption></figure>
+          ${a ? `<figure><img src="${esc(urls[a.storage_path] || '')}" alt="Après"><button type="button" class="btn small ghost" data-act="pick-after" data-pos="${b.position}">Remplacer</button></figure>`
+              : `<button type="button" class="angle-main dashed" data-act="pick-after" data-pos="${b.position}"><span class="plus">📷</span><b>Prendre l'après</b><small class="muted">Même angle si possible</small></button>`}</div>`;
+      }).join('');
+      const n = medias.after.length;
+      return `<div class="card"><h2>Reprends les mêmes angles</h2><p class="muted">Place-toi au même endroit que sur la photo « avant ». Au moins une photo « après » est nécessaire (${n} / ${medias.before.length}).</p>${rows}
+        <div class="actions"><button type="button" class="btn" data-act="to-result" ${n < 1 ? 'disabled' : ''}>Voir le résultat →</button></div></div>`;
+    }
+
+    /* ----- Étape 5 : résultat ----- */
+    function bodyResult() {
+      const sliders = pairsOf(medias).filter(p => p.after).map(p => `<div style="margin-bottom:18px">${sliderHTML(urls[p.before.storage_path], urls[p.after.storage_path], 'round')}<p class="muted" style="margin:6px 0 0">${p.before.angle ? esc(p.before.angle) : ''}</p></div>`).join('');
+      const VIS = [['private', '🔒', 'Privé', 'Seulement toi'], ['friends', '👥', 'Mes amis', 'Sur ton profil et dans leur fil'], ['public', '🌍', 'Tous les membres', 'Sur ton profil et dans le fil « Découvrir »']];
+      return `<div class="card"><h2>Ton avant / après</h2><p class="muted">Glisse pour comparer.</p>${sliders}</div>
+        <div class="card"><h3>Qui peut le voir ?</h3><p class="muted">Tu peux le changer à tout moment.</p>
+          <div class="vis-opts">${VIS.map(v => `<label class="vis"><input type="radio" name="vis" value="${v[0]}" ${v[0] === 'private' ? 'checked' : ''}><span><b>${v[1]} ${v[2]}</b><small>${v[3]}</small></span></label>`).join('')}</div>
+          <label class="field"><span>Légende (facultatif)</span><textarea id="caption" rows="2" maxlength="300" placeholder="Raconte en une phrase ce que tu as changé"></textarea></label>
+          <button type="button" class="btn big" data-act="finish">🎉 Terminer le projet</button></div>`;
+    }
+    async function finishProject() {
+      const vis = (main.querySelector('input[name=vis]:checked') || {}).value || 'private';
+      const caption = $('#caption') ? $('#caption').value.trim() : '';
+      const btn = $('[data-act=finish]'); btn.disabled = true;
+      const before = await myBadgeCodes(user.id);
+      const { error } = await sb.from('projects').update({ status: 'done', visibility: vis, caption: caption || null }).eq('id', project.id);
+      if (error) { btn.disabled = false; return toast(error.message.includes('photo') ? error.message : 'Oups : ' + error.message); }
+      const after = await myBadgeCodes(user.id);
+      const fresh = [...after].filter(c => !before.has(c));
+      let list = [];
+      if (fresh.length) { const { data } = await sb.from('badges').select('*').in('code', fresh).order('sort_order'); list = data || []; }
+      project.status = 'done';
+      showModal(`<h2>Projet terminé ! 🎉</h2><p class="muted">Bravo, ton avant / après est prêt.</p>${badgePopupHTML(list)}<a class="btn" href="../projet/?id=${project.id}">Voir mon avant / après</a>`, true, null);
+    }
+
+    /* ----- Photos : envoi et suppression ----- */
+    async function addPhoto(file, kind, angle, position) {
+      const blob = await compressImage(file, { max: 1280, quality: 0.8 });
+      const path = `${user.id}/${project.id}/${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+      const up = await sb.storage.from('media').upload(path, blob, { contentType: 'image/jpeg' });
+      if (up.error) throw up.error;
+      const { data, error } = await sb.from('media').insert({ user_id: user.id, project_id: project.id, storage_path: path, room: project.room, tool: 'rangement', kind, angle, position }).select('id,storage_path,kind,angle,position').single();
+      if (error) { await sb.storage.from('media').remove([path]); throw error; }
+      return data;
+    }
+    async function removeMedia(m, withAfter) {
+      const gone = [m];
+      if (withAfter && m.kind === 'before') { const a = medias.after.find(x => x.position === m.position); if (a) gone.push(a); }
+      await sb.storage.from('media').remove(gone.map(x => x.storage_path));
+      await sb.from('media').delete().in('id', gone.map(x => x.id));
+      medias.before = medias.before.filter(x => !gone.includes(x));
+      medias.after = medias.after.filter(x => !gone.includes(x));
+    }
+    async function handleFiles(files, ctx) {
+      if (ctx.kind === 'before') {
+        for (let i = 0; i < files.length; i++) {
+          const slot = ctx.angle ? medias.before.find(x => x.angle === ctx.angle) : null;
+          if (!slot && medias.before.length >= 8) { toast('8 photos maximum.'); break; }
+          toast(`Envoi ${i + 1}/${files.length}…`, 8000);
+          const position = slot ? slot.position : nextPos();
+          if (slot) await removeMedia(slot, false);
+          medias.before.push(await addPhoto(files[i], 'before', ctx.angle || null, position));
+          sortMedia();
+        }
+      } else {
+        toast('Envoi…', 8000);
+        const old = medias.after.find(x => x.position === ctx.position);
+        if (old) await removeMedia(old, false);
+        medias.after.push(await addPhoto(files[0], 'after', null, ctx.position));
+        sortMedia();
+      }
+      toast('Photo ajoutée ✅');
+    }
+
+    /* ----- Rendu ----- */
+    function render() {
+      const r = reach();
+      const stepper = STEPS.map((s, i) => `<button type="button" class="step ${i < r ? 'done' : ''}" ${i === step ? 'aria-current="step"' : ''} ${i > r ? 'disabled' : ''} data-step="${i}"><span class="n">${i + 1}</span>${s}</button>`).join('');
+      const body = [bodyPhotos, bodyPlan, bodyAction, bodyAfter, bodyResult][step]();
+      main.innerHTML = `<div class="room-head" style="margin-bottom:10px"><div class="big-emoji">${room.emoji}</div><div><h1 style="font-size:clamp(1.5rem,5vw,2.3rem);margin:0">${esc(project.title)}</h1><p class="muted" style="margin:0"><a href="./">← Mes projets</a></p></div></div>
+        <div class="stepper">${stepper}</div>${body}`;
+      initSliders(main);
+      if (step === 2) updateProgress();
+    }
+
+    main.addEventListener('click', async e => {
+      const t = e.target.closest('[data-act],[data-step],[data-tab]'); if (!t) return;
+      if (t.dataset.step !== undefined) { step = Number(t.dataset.step); render(); return; }
+      if (t.dataset.tab) {
+        $$('.tab', main).forEach(x => x.setAttribute('aria-selected', x === t));
+        $$('.panel', main).forEach(x => { x.hidden = x.dataset.panel !== t.dataset.tab; });
+        return;
+      }
+      switch (t.dataset.act) {
+        case 'pick': pickCtx = { kind: 'before', angle: t.dataset.angle }; $('#file').multiple = false; $('#file').click(); break;
+        case 'pick-free': pickCtx = { kind: 'before', angle: null }; $('#file').multiple = true; $('#file').click(); break;
+        case 'pick-after': pickCtx = { kind: 'after', position: Number(t.dataset.pos) }; $('#file').multiple = false; $('#file').click(); break;
+        case 'del': {
+          const m = medias.before.find(x => x.id === t.dataset.id);
+          if (!m || busy) break;
+          if (!confirm('Supprimer cette photo ?')) break;
+          busy = true; try { await removeMedia(m, true); } finally { busy = false; } render(); break;
+        }
+        case 'next': step = Math.min(4, step + 1); render(); break;
+        case 'gen': generate(); break;
+        case 'classic': useClassic(); break;
+        case 'replan': showGen = true; planError = ''; render(); break;
+        case 'cancel-replan': showGen = false; planError = ''; render(); break;
+        case 'to-after': {
+          const { error } = await sb.from('projects').update({ status: 'after', progress: project.progress }).eq('id', project.id);
+          if (error) return toast('Oups : ' + error.message);
+          project.status = 'after'; step = 3; render(); break;
+        }
+        case 'to-result': step = 4; render(); break;
+        case 'finish': finishProject(); break;
+      }
+    });
+    main.addEventListener('change', e => {
+      const k = e.target.dataset && e.target.dataset.k;
+      if (k) {
+        if (e.target.checked) project.progress.checked[k] = true; else delete project.progress.checked[k];
+        updateProgress(); saveProgress(); return;
+      }
+      if (e.target.id === 'consent') $('#btn-gen').disabled = !e.target.checked;
+    });
+    $('#file').addEventListener('change', async e => {
+      const files = [...e.target.files]; e.target.value = '';
+      if (!files.length || !pickCtx || busy) return;
+      busy = true;
+      try { await handleFiles(files, pickCtx); } catch (err) { toast('Oups : ' + (err.message || err)); }
+      finally { busy = false; await refreshUrls(); render(); }
+    });
+    render();
   }
 
-  $('#btn-roll').onclick = roll;
-  $('#chips').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) selectRoom(b.dataset.id, true); });
-  $('#room').addEventListener('change', e => { const k = e.target.dataset && e.target.dataset.k; if (k) onCheck(k, e.target.checked); });
-  $('#room').addEventListener('click', e => {
-    const t = e.target.closest('[data-tab]');
-    if (t) {
-      $$('#room .tab').forEach(x => x.setAttribute('aria-selected', x === t));
-      $$('#room .panel').forEach(x => { x.hidden = x.dataset.panel !== t.dataset.tab; });
-      return;
-    }
-    if (e.target.id === 'btn-finish') finish();
-    if (e.target.id === 'btn-reset') reset();
-    if (e.target.id === 'btn-upload') upload();
-  });
-  renderChips();
-  const qs = new URLSearchParams(location.search);
-  if (qs.get('piece') && ROOMS.some(r => r.id === qs.get('piece'))) selectRoom(qs.get('piece'), false);
-  else if (qs.get('tirage')) roll();
+  const pid = qs.get('p');
+  if (pid) await wizard(pid); else await list();
 })();
 </script>
 </body>

@@ -10,13 +10,15 @@
 <body data-base="../">
 <header id="nav"></header>
 <main class="wrap" id="main"><p class="muted">Chargement…</p></main>
+<input type="file" id="avatar-file" accept="image/*" hidden>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="../assets/app.js"></script>
+<script src="../assets/rooms.js"></script>
 <script>
 (async () => {
-  const VIS = { private: '🔒 Privée', friends: '👥 Amis', public: '🌍 Tous' };
-  const ROOMNAMES = { chambre: 'Chambre', salon: 'Salon', cuisine: 'Cuisine', salle_de_bain: 'Salle de bain', entree: 'Entrée', bureau: 'Bureau', balcon: 'Balcon' };
   const main = $('#main');
+  const ROOMNAME = {}; ROOMS.forEach(r => { ROOMNAME[r.id] = r.nom; });
+  const STATUS_LABEL = { draft: 'Photos à prendre', planned: 'Plan prêt', doing: 'En cours', after: 'Photos après', done: 'Terminé' };
 
   sb.auth.onAuthStateChange(async ev => {
     if (ev === 'PASSWORD_RECOVERY') {
@@ -31,157 +33,176 @@
   const me = user.id;
   const target = new URLSearchParams(location.search).get('u');
 
-  const q = target
-    ? sb.from('profiles').select('*').eq('username', target).maybeSingle()
-    : sb.from('profiles').select('*').eq('id', me).maybeSingle();
-  const { data: profile } = await q;
-  if (!profile) { main.innerHTML = '<div class="card"><h2>Profil introuvable</h2><p class="muted">Ce pseudo n\'existe pas.</p><a class="btn" href="./">Retour à mon profil</a></div>'; return; }
+  const { data: profile } = target
+    ? await sb.from('profiles').select('*').eq('username', target).maybeSingle()
+    : await sb.from('profiles').select('*').eq('id', me).maybeSingle();
+  if (!profile) { main.innerHTML = '<div class="card empty"><span class="big-emoji">🔍</span><h2>Profil introuvable</h2><p class="muted">Ce pseudo n\'existe pas.</p><a class="btn" href="./">Mon profil</a></div>'; return; }
   const isMe = profile.id === me;
   document.title = `${profile.username} – EasyYourLife`;
 
-  let friendships = [], names = {};
+  let friendships = [], people = {};
   async function loadFriends() {
     const { data } = await sb.from('friendships').select('*').or(`requester_id.eq.${me},addressee_id.eq.${me}`);
     friendships = data || [];
     const ids = [...new Set(friendships.map(f => f.requester_id === me ? f.addressee_id : f.requester_id))];
-    names = {};
+    people = {};
     if (ids.length) {
-      const { data: ps } = await sb.from('profiles').select('id,username').in('id', ids);
-      (ps || []).forEach(p => { names[p.id] = p.username; });
+      const { data: ps } = await sb.from('profiles').select('id,username,avatar_path').in('id', ids);
+      (ps || []).forEach(p => { people[p.id] = p; });
     }
   }
-  const relation = otherId => friendships.find(f => f.requester_id === otherId || f.addressee_id === otherId);
+  const relation = id => friendships.find(f => f.requester_id === id || f.addressee_id === id);
+  const getRel = () => isMe ? null : relation(profile.id);
+  const isFriend = () => { const r = getRel(); return isMe || (r && r.status === 'accepted'); };
   await loadFriends();
 
-  const [bc, ub, rc, mc, md] = await Promise.all([
+  const [bc, ub, pj, pin] = await Promise.all([
     sb.from('badges').select('*').order('sort_order'),
     sb.from('user_badges').select('badge_code').eq('user_id', profile.id),
-    sb.from('rooms_completed').select('room').eq('user_id', profile.id),
-    sb.from('missions_done').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
-    sb.from('media').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(24)
+    sb.from('projects').select('id,room,title,status,visibility,completed_at,created_at').eq('user_id', profile.id).order('created_at', { ascending: false }),
+    sb.from('media').select('id,project_id,tool,storage_path,angle,pinned_at').eq('user_id', profile.id).eq('pinned', true).order('pinned_at', { ascending: false }).limit(60)
   ]);
   const catalog = bc.data || [];
   const earned = new Set((ub.data || []).map(r => r.badge_code));
-  const rooms = (rc.data || []).map(r => r.room);
-  const nbMissions = mc.count || 0;
-  let medias = md.data || [];
+  const projects = pj.data || [];
+  const pinned = pin.data || [];
+  const media = await projectMedia(projects.map(p => p.id));
+  const covers = {}, projTitle = {};
+  projects.forEach(p => { projTitle[p.id] = p.title; const b = bestPair(media[p.id]); covers[p.id] = b ? (b.after || b.before).storage_path : null; });
+  const urls = await signedMap([...Object.values(covers), ...pinned.map(m => m.storage_path)]);
 
-  const rel = isMe ? null : relation(profile.id);
-  const isFriend = isMe || (rel && rel.status === 'accepted');
-
-  async function renderPhotos() {
-    const el = $('#photos'); if (!el) return;
-    if (!medias.length) { el.innerHTML = `<p class="muted">${isMe ? 'Aucune photo pour le moment. Ajoute-en depuis l\'outil « Ranger & décorer ».' : 'Aucune photo visible.'}</p>`; return; }
-    const { data: urls } = await sb.storage.from('media').createSignedUrls(medias.map(m => m.storage_path), 3600);
-    const map = {}; (urls || []).forEach(u => { if (u.signedUrl) map[u.path] = u.signedUrl; });
-    el.innerHTML = '<div class="gallery">' + medias.map(m => `<figure>
-      ${map[m.storage_path] ? `<img loading="lazy" src="${esc(map[m.storage_path])}" alt="${esc(m.caption || 'Photo')}">` : ''}
-      <figcaption>${m.room ? `<b>${esc(ROOMNAMES[m.room] || m.room)}</b><br>` : ''}${esc(m.caption || '')}
-      ${isMe ? `<div style="margin-top:6px"><select data-vis="${esc(m.id)}">${Object.entries(VIS).map(([v, l]) => `<option value="${v}" ${m.visibility === v ? 'selected' : ''}>${l}</option>`).join('')}</select> <button class="btn small danger" data-del="${esc(m.id)}">Supprimer</button></div>` : ''}
-      </figcaption></figure>`).join('') + '</div>';
+  /* ----- Morceaux d'interface ----- */
+  function highlights() {
+    const groups = {};
+    pinned.forEach(m => { if (urls[m.storage_path]) (groups[m.tool || 'autre'] = groups[m.tool || 'autre'] || []).push(m); });
+    const keys = Object.keys(groups);
+    if (!keys.length) return isMe ? '<p class="muted" style="margin-top:14px">📌 Épingle des photos depuis la page d\'un projet : elles apparaîtront ici, rangées par outil, comme des stories à la une.</p>' : '';
+    return `<div class="hls" aria-label="À la une">${keys.map(k => {
+      const t = TOOLS.find(x => x.id === k);
+      return `<button type="button" class="hl" data-tool="${esc(k)}"><span class="hl-ring"><img src="${esc(urls[groups[k][0].storage_path])}" alt=""></span>${t ? t.emoji + ' ' + esc(t.nom) : '📌 Autres'}</button>`;
+    }).join('')}</div>`;
   }
-
+  function projectsHTML() {
+    const list = projects.filter(p => isMe || p.status === 'done');
+    const tiles = list.map(p => {
+      const r = ROOMS.find(x => x.id === p.room) || ROOMS[0];
+      const u = covers[p.id] ? urls[covers[p.id]] : null;
+      const href = p.status === 'done' ? `../projet/?id=${p.id}` : `../rangement/?p=${p.id}`;
+      return `<a class="proj" href="${href}"><div class="cover">${u ? `<img src="${esc(u)}" alt="" loading="lazy">` : r.emoji}</div><div class="meta"><b>${esc(p.title)}</b>${p.status !== 'done' ? `<span class="status-pill">${STATUS_LABEL[p.status]}</span>` : (isMe ? `<small class="muted">${{ private: '🔒', friends: '👥', public: '🌍' }[p.visibility]}</small>` : '')}</div></a>`;
+    }).join('');
+    if (!list.length) return `<div class="card empty"><span class="big-emoji">📸</span><p class="muted">${isMe ? 'Aucun projet pour le moment.' : 'Aucun projet à voir pour le moment.'}</p>${isMe ? '<a class="btn" href="../rangement/?nouveau=1">Lancer un projet</a>' : ''}</div>`;
+    return `<div class="proj-grid">${tiles}</div>${isMe ? '<p style="margin-top:16px"><a class="btn small" href="../rangement/?nouveau=1">＋ Nouveau projet</a></p>' : ''}`;
+  }
+  function badgesHTML() {
+    if (!isFriend()) return '<div class="banner">🔒 Deviens ami avec ce membre pour voir ses badges.</div>';
+    return `<div class="badge-grid">${catalog.map(b => `<div class="badge ${earned.has(b.code) ? '' : 'locked'}"><div class="ico">${esc(b.icon)}</div><b>${esc(b.name)}</b><small>${esc(b.description)}</small></div>`).join('')}</div>`;
+  }
   function friendsHTML() {
     const recues = friendships.filter(f => f.status === 'pending' && f.addressee_id === me);
     const envoyees = friendships.filter(f => f.status === 'pending' && f.requester_id === me);
     const amis = friendships.filter(f => f.status === 'accepted');
-    const other = f => f.requester_id === me ? f.addressee_id : f.requester_id;
-    const nom = f => esc(names[other(f)] || '…');
-    return `<h3>👥 Mes amis</h3>
+    const other = f => people[f.requester_id === me ? f.addressee_id : f.requester_id] || { username: '…' };
+    const who = f => { const o = other(f); return `<a href="?u=${encodeURIComponent(o.username)}" style="display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:700">${avatarHTML(o, 'sm')}${esc(o.username)}</a>`; };
+    return `<div class="card"><h3>Trouver des amis</h3>
       <form id="search-form" class="row" style="border:0"><input type="search" id="search-q" placeholder="Chercher un pseudo" maxlength="24" style="flex:1"><button class="btn small" type="submit">Chercher</button></form>
-      <div id="search-res"></div>
-      ${recues.length ? `<h4 style="margin-top:14px">Demandes reçues</h4>${recues.map(f => `<div class="row"><a href="?u=${encodeURIComponent(names[other(f)] || '')}">${nom(f)}</a><div class="btns"><button class="btn small" data-act="accept" data-id="${esc(f.id)}">Accepter</button><button class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Refuser</button></div></div>`).join('')}` : ''}
-      ${envoyees.length ? `<h4 style="margin-top:14px">Demandes envoyées</h4>${envoyees.map(f => `<div class="row"><span>${nom(f)}</span><button class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Annuler</button></div>`).join('')}` : ''}
-      <h4 style="margin-top:14px">Amis (${amis.length})</h4>
-      ${amis.length ? amis.map(f => `<div class="row"><a href="?u=${encodeURIComponent(names[other(f)] || '')}">${nom(f)}</a><button class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Retirer</button></div>`).join('') : '<p class="muted">Pas encore d\'amis. Cherche un pseudo ci-dessus ou partage le lien du site.</p>'}`;
+      <div id="search-res"></div></div>
+      ${recues.length ? `<div class="card"><h3>Demandes reçues</h3>${recues.map(f => `<div class="row">${who(f)}<div class="btns"><button type="button" class="btn small" data-act="accept" data-id="${esc(f.id)}">Accepter</button><button type="button" class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Refuser</button></div></div>`).join('')}</div>` : ''}
+      ${envoyees.length ? `<div class="card"><h3>Demandes envoyées</h3>${envoyees.map(f => `<div class="row">${who(f)}<button type="button" class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Annuler</button></div>`).join('')}</div>` : ''}
+      <div class="card"><h3>Mes amis (${amis.length})</h3>${amis.length ? amis.map(f => `<div class="row">${who(f)}<button type="button" class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Retirer</button></div>`).join('') : '<p class="muted">Pas encore d\'amis. Cherche un pseudo ci-dessus, ou partage le lien du site.</p>'}</div>`;
   }
-
   function relationButton() {
-    if (isMe) return '';
-    if (!rel) return `<button class="btn" id="btn-add" data-id="${esc(profile.id)}">➕ Ajouter en ami</button>`;
+    const rel = getRel();
+    if (!rel) return `<button type="button" class="btn" id="btn-add" data-id="${esc(profile.id)}">➕ Ajouter en ami</button>`;
     if (rel.status === 'accepted') return '<span class="tag">✓ Amis</span>';
     if (rel.requester_id === me) return '<span class="tag">Demande envoyée</span>';
-    return `<button class="btn" data-act="accept" data-id="${esc(rel.id)}">Accepter sa demande</button>`;
+    return `<button type="button" class="btn" data-act="accept" data-id="${esc(rel.id)}">Accepter sa demande</button>`;
   }
 
+  let tab = 'projets', editOpen = false;
   function render() {
+    const doneCount = projects.filter(p => p.status === 'done').length;
+    const nFriends = friendships.filter(f => f.status === 'accepted').length;
+    const tabs = [['projets', 'Projets'], ['badges', 'Badges']].concat(isMe ? [['amis', 'Amis']] : []);
     main.innerHTML = `
-    <div class="card">
-      <div class="profile-head">
-        <div class="avatar" style="--h:${hueOf(profile.username)}">${esc(profile.username.charAt(0).toUpperCase())}</div>
-        <div style="flex:1;min-width:200px"><h1 style="margin:0">${esc(profile.username)}</h1><p class="muted" style="margin:0">${esc(profile.bio || (isMe ? 'Ajoute une petite description ci-dessous.' : ''))}</p></div>
-        <div>${relationButton()}</div>
-      </div>
-      <div class="stats">
-        <div class="stat"><b>${isFriend ? nbMissions : '–'}</b>missions</div>
-        <div class="stat"><b>${isFriend ? rooms.length : '–'}</b>pièces</div>
-        <div class="stat"><b>${isFriend ? earned.size : '–'}</b>badges</div>
-      </div>
-    </div>
-    ${isFriend ? '' : '<div class="banner">🔒 Deviens ami avec ce membre pour voir ses badges, ses pièces et ses photos partagées.</div>'}
-    ${isFriend ? `<div class="card"><h3>🏅 Badges</h3><div class="badge-grid">${catalog.map(b => `<div class="badge ${earned.has(b.code) ? '' : 'locked'}"><div class="ico">${esc(b.icon)}</div><b>${esc(b.name)}</b><small>${esc(b.description)}</small></div>`).join('')}</div></div>
-    <div class="card"><h3>🏠 Pièces terminées</h3>${rooms.length ? `<div class="chips" style="justify-content:flex-start">${rooms.map(r => `<span class="chip done">${esc(ROOMNAMES[r] || r)} ✓</span>`).join('')}</div>` : '<p class="muted">Aucune pièce terminée pour le moment.</p>'}</div>` : ''}
-    <div class="card"><h3>📸 Photos</h3><div id="photos"></div></div>
-    ${isMe ? `<div class="card" id="friends">${friendsHTML()}</div>
-    <div class="card"><h3>✏️ Modifier mon profil</h3>
-      <form id="edit-form">
-        <label class="field"><span>Pseudo</span><input type="text" id="e-pseudo" value="${esc(profile.username)}" maxlength="24"></label>
-        <label class="field"><span>Description (200 caractères max)</span><textarea id="e-bio" rows="2" maxlength="200">${esc(profile.bio || '')}</textarea></label>
-        <button class="btn" type="submit">Enregistrer</button>
-      </form></div>` : ''}`;
-    renderPhotos();
+      <div class="card"><div class="profile-top">
+        ${avatarHTML(profile, 'xl')}
+        <div style="flex:1;min-width:220px"><h1 style="font-size:clamp(1.6rem,5vw,2.4rem);margin:0">${esc(profile.username)}</h1>
+          <p class="muted" style="margin:.2rem 0 0">${esc(profile.bio || (isMe ? 'Ajoute une description avec « Modifier le profil ».' : ''))}</p>
+          <div class="stats"><div class="stat"><b>${doneCount}</b>projets</div><div class="stat"><b>${isFriend() ? earned.size : '–'}</b>badges</div>${isMe ? `<div class="stat"><b>${nFriends}</b>amis</div>` : ''}</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${isMe ? '<button type="button" class="btn small ghost" id="btn-edit">✏️ Modifier le profil</button><button type="button" class="btn small ghost" id="btn-theme">🎨 Apparence</button>' : relationButton()}</div>
+      </div>${highlights()}</div>
+      ${isMe ? `<div class="card" id="edit-card" ${editOpen ? '' : 'hidden'}><h3>Modifier mon profil</h3>
+        <p><label class="btn small ghost" style="cursor:pointer">📷 Changer ma photo<input type="file" id="avatar-pick" accept="image/*" hidden></label></p>
+        <form id="edit-form">
+          <label class="field"><span>Pseudo</span><input type="text" id="e-pseudo" value="${esc(profile.username)}" maxlength="24"></label>
+          <label class="field"><span>Description (200 caractères max)</span><textarea id="e-bio" rows="2" maxlength="200">${esc(profile.bio || '')}</textarea></label>
+          <button class="btn" type="submit">Enregistrer</button></form></div>` : ''}
+      <div class="seg" id="ptabs" role="tablist">${tabs.map(([k, l]) => `<button type="button" data-p="${k}" aria-selected="${k === tab}">${l}</button>`).join('')}</div>
+      <div id="p-projets" ${tab === 'projets' ? '' : 'hidden'}>${projectsHTML()}</div>
+      <div id="p-badges" ${tab === 'badges' ? '' : 'hidden'}><div class="card">${badgesHTML()}</div></div>
+      ${isMe ? `<div id="p-amis" ${tab === 'amis' ? '' : 'hidden'}>${friendsHTML()}</div>` : ''}`;
   }
   render();
 
-  // ----- Actions -----
+  /* ----- Actions ----- */
+  async function setAvatar(file) {
+    try {
+      toast('Envoi de la photo…', 6000);
+      const blob = await compressImage(file, { max: 512, quality: 0.85, square: true });
+      const path = `${me}/avatar-${Date.now()}.jpg`;
+      const up = await sb.storage.from('avatars').upload(path, blob, { contentType: 'image/jpeg' });
+      if (up.error) return toast('Oups : ' + up.error.message);
+      const old = profile.avatar_path;
+      const res = await withBadgeDiff(me, () => sb.from('profiles').update({ avatar_path: path }).eq('id', me));
+      if (res && res.error) { await sb.storage.from('avatars').remove([path]); return; }
+      if (old) sb.storage.from('avatars').remove([old]);
+      profile.avatar_path = path; if (ME) ME.avatar_path = path;
+      renderNav(user); editOpen = true; render(); toast('Photo de profil mise à jour ✅');
+    } catch (e) { toast('Oups : ' + e.message); }
+  }
+  async function sendRequest(otherId) {
+    const { error } = await sb.from('friendships').insert({ requester_id: me, addressee_id: otherId });
+    if (error) return toast(error.code === '23505' ? 'Une demande existe déjà.' : 'Oups : ' + error.message);
+    toast('Demande envoyée ✅'); await loadFriends(); render();
+  }
+
   main.addEventListener('click', async e => {
+    if (e.target.closest('#btn-edit')) { editOpen = !editOpen; $('#edit-card').hidden = !editOpen; return; }
+    if (e.target.closest('#btn-theme')) { if (window.EYL_THEME) window.EYL_THEME.open(); return; }
+    const p = e.target.closest('[data-p]');
+    if (p) { tab = p.dataset.p; render(); return; }
+    const hl = e.target.closest('[data-tool]');
+    if (hl) {
+      const k = hl.dataset.tool, t = TOOLS.find(x => x.id === k);
+      const items = pinned.filter(m => (m.tool || 'autre') === k && urls[m.storage_path])
+        .map(m => ({ url: urls[m.storage_path], caption: (projTitle[m.project_id] || '') + (m.angle ? ' · ' + m.angle : '') }));
+      openStory(items, { who: profile.username, title: t ? t.nom : 'Autres', avatar: avatarHTML(profile, 'sm') });
+      return;
+    }
     const add = e.target.closest('#btn-add');
     if (add) { await sendRequest(add.dataset.id); return; }
     const act = e.target.closest('[data-act]');
     if (act) {
       const id = act.dataset.id;
-      if (act.dataset.act === 'accept') {
-        await withBadgeDiff(me, () => sb.from('friendships').update({ status: 'accepted' }).eq('id', id));
-      } else {
-        await sb.from('friendships').delete().eq('id', id);
-      }
-      await loadFriends(); location.reload();
-      return;
-    }
-    const del = e.target.closest('[data-del]');
-    if (del) {
-      if (!confirm('Supprimer cette photo ?')) return;
-      const m = medias.find(x => x.id === del.dataset.del); if (!m) return;
-      await sb.storage.from('media').remove([m.storage_path]);
-      const { error } = await sb.from('media').delete().eq('id', m.id);
-      if (error) return toast('Oups : ' + error.message);
-      medias = medias.filter(x => x.id !== m.id); renderPhotos(); toast('Photo supprimée.');
+      if (act.dataset.act === 'accept') await withBadgeDiff(me, () => sb.from('friendships').update({ status: 'accepted' }).eq('id', id));
+      else await sb.from('friendships').delete().eq('id', id);
+      if (isMe) { await loadFriends(); render(); } else location.reload();
     }
   });
-  main.addEventListener('change', async e => {
-    const id = e.target.dataset && e.target.dataset.vis;
-    if (!id) return;
-    const { error } = await sb.from('media').update({ visibility: e.target.value }).eq('id', id);
-    toast(error ? 'Oups : ' + error.message : 'Visibilité mise à jour ✅');
+  main.addEventListener('change', e => {
+    if (e.target.id === 'avatar-pick' && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; setAvatar(f); }
   });
-
-  async function sendRequest(otherId) {
-    const { error } = await sb.from('friendships').insert({ requester_id: me, addressee_id: otherId });
-    if (error) return toast(error.code === '23505' ? 'Une demande existe déjà.' : 'Oups : ' + error.message);
-    toast('Demande envoyée ✅'); location.reload();
-  }
-
   main.addEventListener('submit', async e => {
     e.preventDefault();
     if (e.target.id === 'search-form') {
       const term = $('#search-q').value.replace(/[^A-Za-z0-9_]/g, '');
       if (term.length < 2) return toast('Entre au moins 2 caractères.');
-      const { data } = await sb.from('profiles').select('id,username').ilike('username', `%${term}%`).neq('id', me).limit(8);
+      const { data } = await sb.from('profiles').select('id,username,avatar_path').ilike('username', `%${term}%`).neq('id', me).limit(8);
       const res = data || [];
       $('#search-res').innerHTML = res.length ? res.map(p => {
         const r = relation(p.id);
-        const btn = !r ? `<button class="btn small" data-add="${esc(p.id)}">Ajouter</button>` : `<span class="tag">${r.status === 'accepted' ? 'Ami' : 'En attente'}</span>`;
-        return `<div class="row"><a href="?u=${encodeURIComponent(p.username)}">${esc(p.username)}</a>${btn}</div>`;
+        const btn = !r ? `<button type="button" class="btn small" data-add="${esc(p.id)}">Ajouter</button>` : `<span class="tag">${r.status === 'accepted' ? 'Ami' : 'En attente'}</span>`;
+        return `<div class="row"><a href="?u=${encodeURIComponent(p.username)}" style="display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:700">${avatarHTML(p, 'sm')}${esc(p.username)}</a>${btn}</div>`;
       }).join('') : '<p class="muted">Aucun membre trouvé.</p>';
       $$('#search-res [data-add]').forEach(b => { b.onclick = () => sendRequest(b.dataset.add); });
     }
@@ -190,7 +211,7 @@
       if (!/^[A-Za-z0-9_]{3,24}$/.test(username)) return toast('Pseudo invalide (3 à 24 lettres, chiffres ou _).');
       const { error } = await sb.from('profiles').update({ username, bio: bio || null }).eq('id', me);
       if (error) return toast(error.code === '23505' ? 'Ce pseudo est déjà pris.' : 'Oups : ' + error.message);
-      toast('Profil mis à jour ✅'); setTimeout(() => { location.href = './'; }, 600);
+      toast('Profil mis à jour ✅'); setTimeout(() => { location.href = './'; }, 500);
     }
   });
 })();
