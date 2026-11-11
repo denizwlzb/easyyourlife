@@ -4,272 +4,239 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Le déclic du jour – EasyYourLife</title>
-<meta name="description" content="Une découverte par jour, la même pour tout le monde. Apprends quelque chose de nouveau, puis débats-en.">
+<meta name="description" content="Une découverte par jour, la même pour tout le monde, puis un débat ouvert dessus.">
+<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121317" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="apple-touch-icon" href="../assets/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="EasyYourLife">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="../assets/style.css?v=93b0748d">
-<script src="../assets/theme.js?v=229c1bf4"></script>
-<style>
-.hero.tight{padding-bottom:10px}
-.stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
-.lesson-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-.lesson-emoji{font-size:3.4rem;line-height:1;margin:6px 0 8px}
-.acc{font-size:1.2rem;color:var(--muted);margin:0 0 14px}
-.points{padding-left:1.2em;margin:0 0 16px}
-.points li{margin-bottom:10px}
-.small{font-size:.88rem}
-.reveal{text-align:center;padding:36px 22px}
-.reveal .big-emoji{margin-bottom:10px}
-.statement{font-family:var(--font-display);font-weight:700;font-size:1.35rem;line-height:1.25;margin:0 0 16px}
-.votebar{display:flex;height:16px;border:var(--bw) solid var(--line);border-radius:99px;overflow:hidden;background:var(--surface-2);margin:6px 0}
-.votebar i{display:block;height:100%}
-.votebar .y{background:var(--good)}
-.votebar .n{background:var(--bad)}
-.mytake{background:var(--surface-2);border:2px solid var(--line);border-radius:var(--r);padding:14px;margin:14px 0}
-.stance{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 10px}
-.stance .pin[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
-.take{border-top:2px dashed var(--line);padding:14px 0}
-.take-head{display:flex;gap:10px;align-items:center;margin-bottom:6px}
-.take p,.reply p{margin:6px 0;overflow-wrap:anywhere}
-.reply{display:flex;gap:8px;margin:8px 0 0 14px;padding-left:10px;border-left:3px solid var(--line)}
-.reply-box{display:flex;gap:8px;margin:8px 0 0 14px}
-.reply-box[hidden]{display:none}
-.pill.pour{background:var(--good);color:#14213d}
-.pill.contre{background:var(--bad);color:#fff}
-.archive .card{margin-bottom:12px;padding:14px 18px}
-.fold-in{margin-top:12px}
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="../assets/eyl.css?v=c2aa9f9b">
 </head>
 <body data-base="../">
 <header id="nav"></header>
-<main class="wrap" id="main"><p class="muted">Chargement…</p></main>
+<main class="wrap" id="main"><p class="muted"><span class="spinner"></span>Chargement…</p></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="../assets/app.js?v=6c603325"></script>
-<script src="../assets/lecons.js?v=1"></script>
+<script src="../assets/outils.js?v=493391f2"></script>
+<script src="../assets/nouveautes.js?v=c688f9d4"></script>
+<script src="../assets/lecons.js?v=bb569b03"></script>
+<script src="../assets/eyl.js?v=9fbf10bb"></script>
 <script>
+
 (async () => {
   const user = await initPage();
   const main = $('#main');
 
-  /* ---- Le calendrier : le jour 0 est le 13 octobre 2026 (heure de Paris).
-     Le calcul ne dépend que de la date, donc tout le monde voit la même découverte. ---- */
-  const START = Date.UTC(2026, 9, 13);
-  const N = LECONS.length;
-  const KEY = 'eyl_decouvertes';
-  const idxOf = k => ((k % N) + N) % N;
-  const isoOfDay = k => new Date(START + k * 86400000).toISOString().slice(0, 10);
-  function parisISO(d = new Date()) {
+  /* Le jour 0 est le 13 octobre 2026, heure de Paris : tout le monde voit la même chose. */
+  const DEBUT = Date.UTC(2026, 9, 13), N = LECONS.length;
+  const idx = k => ((k % N) + N) % N;
+  const isoDuJour = k => new Date(DEBUT + k * 86400000).toISOString().slice(0, 10);
+  const parisISO = (d = new Date()) => {
     const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' })
-      .formatToParts(d).reduce((a, x) => { a[x.type] = x.value; return a; }, {});
+      .formatToParts(d).reduce((a, x) => (a[x.type] = x.value, a), {});
     return `${p.year}-${p.month}-${p.day}`;
-  }
-  const todayISO = parisISO();
-  const [ty, tm, td] = todayISO.split('-').map(Number);
-  const n = Math.round((Date.UTC(ty, tm - 1, td) - START) / 86400000);
-  const today = LECONS[idxOf(n)];
+  };
+  const aujourdhui = parisISO();
+  const [ay, am, aj] = aujourdhui.split('-').map(Number);
+  const n = Math.round((Date.UTC(ay, am - 1, aj) - DEBUT) / 86400000);
+  const duJour = LECONS[idx(n)];
 
-  const past = [];
-  for (let i = 1; i < N; i++) {
-    const day = n - i;
-    if (day < 0) break;
-    past.push({ l: LECONS[idxOf(day)], day });
-  }
-  const dateLabel = day => new Date(START + day * 86400000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const passees = [];
+  for (let i = 1; i < N; i++) { const j = n - i; if (j < 0) break; passees.push({ l: LECONS[idx(j)], j }); }
+  const dateCourte = j => new Date(DEBUT + j * 86400000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 
-  const wanted = new URLSearchParams(location.search).get('l');
-  const picked = wanted && [today, ...past.map(p => p.l)].find(l => l.id === wanted);
-  const view = picked || today;
-  const isToday = view.id === today.id;
+  const voulue = new URLSearchParams(location.search).get('l');
+  const choisie = voulue && [duJour, ...passees.map(p => p.l)].find(l => l.id === voulue);
+  const vue = choisie || duJour;
+  const cEstAujourdhui = vue.id === duJour.id;
 
-  /* ---- Mémoire locale : série et nombre de découvertes (sur cet appareil) ---- */
-  const readStore = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
-  const writeStore = o => { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {} };
-  function streakOf(st) {
-    let k = n, c = 0;
-    if (!st[isoOfDay(k)]) k--;
-    while (st[isoOfDay(k)]) { c++; k--; }
-    return c;
-  }
-  function drawStats() {
-    const st = readStore(), total = Object.keys(st).length, s = streakOf(st);
-    $('#stats').innerHTML = total
-      ? `<span class="pill">🔥 Série : ${s} jour${s > 1 ? 's' : ''}</span><span class="pill">📚 ${total} découverte${total > 1 ? 's' : ''}</span>`
-      : '';
+  const serie = () => { let k = n, c = 0; const v = store.get('declics', {}); if (!v[isoDuJour(k)]) k--; while (v[isoDuJour(k)]) { c++; k--; } return c; };
+
+  main.innerHTML = `
+    <div class="tool-head" style="--h:265"><span class="em">💡</span>
+      <div><h1 style="margin:0">Le déclic du jour</h1>
+      <p class="muted" style="margin:0">Une découverte par jour, la même pour tout le monde.</p></div></div>
+    <div class="tags" id="compteurs" style="margin-bottom:16px"></div>
+    <div id="scene"></div>
+    <div id="debat"></div>
+    <div class="sec"><h2>Quand tu n'as rien à faire</h2></div>
+    <div id="archive"></div>`;
+
+  function compteurs() {
+    const v = store.get('declics', {}), total = Object.keys(v).length, s = serie();
+    $('#compteurs').innerHTML = total ? `<span class="tag">🔥 ${s} jour${s > 1 ? 's' : ''} d'affilée</span><span class="tag">📚 ${total} découverte${total > 1 ? 's' : ''}</span>` : '';
   }
 
-  /* ---- Affichage d'une découverte ---- */
-  const bodyHTML = l => `<ul class="points">${l.points.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
-    <div class="banner"><b>À essayer :</b> ${esc(l.essai)}</div>
-    ${l.note ? `<p class="muted small">${esc(l.note)}</p>` : ''}`;
+  const corps = l => `
+    <ul style="padding-left:1.15em;margin:0 0 16px">${l.points.map(p => `<li style="margin-bottom:9px">${esc(p)}</li>`).join('')}</ul>
+    <div class="note"><span class="em">🎯</span><span><b>À essayer :</b> ${esc(l.essai)}</span></div>
+    ${l.note ? `<p class="muted" style="font-size:.86rem">${esc(l.note)}</p>` : ''}`;
 
-  const lessonHTML = l => `<article class="card lesson">
-    <div class="lesson-top"><span class="tape">${esc(l.cat)}</span><span class="pill">⏱️ ${esc(l.duree)}</span></div>
-    <div class="lesson-emoji" aria-hidden="true">${l.emoji}</div>
-    <h2>${esc(l.titre)}</h2>
-    <p class="acc">${esc(l.accroche)}</p>
-    ${bodyHTML(l)}
-    <div class="cta-row"><button type="button" class="btn ghost small" id="share">Partager 📤</button></div>
-  </article>`;
+  function afficher(l, fete) {
+    $('#scene').innerHTML = `
+      ${cEstAujourdhui ? '' : `<div class="note"><span class="em">🕰️</span><span>Ancienne découverte. <a href="./">Revenir à celle du jour</a></span></div>`}
+      <article class="card">
+        <div class="tags" style="margin-bottom:12px"><span class="tag">${esc(l.cat)}</span><span class="tag">⏱️ ${esc(l.duree)}</span></div>
+        <div style="font-size:2.6rem;line-height:1;margin-bottom:10px" aria-hidden="true">${l.emoji}</div>
+        <h2>${esc(l.titre)}</h2>
+        <p class="muted" style="font-size:1.05rem">${esc(l.accroche)}</p>
+        ${corps(l)}
+        <button type="button" class="btn ghost small" id="partager" style="margin-top:6px">Partager</button>
+      </article>
+      ${cEstAujourdhui ? '<p class="muted center" id="compte" style="margin-top:12px;font-size:.88rem"></p>' : ''}`;
+    $('#partager').onclick = () => partager(l);
+    if (fete) confetti();
+    debat(l);
+    if (cEstAujourdhui) tic();
+  }
 
-  async function share(l) {
+  async function partager(l) {
     const url = new URL(location.pathname + '?l=' + encodeURIComponent(l.id), location.origin).href;
-    const text = `${l.emoji} ${l.titre} : ${l.accroche}\nÀ débattre : « ${l.debat} »`;
+    const texte = `${l.emoji} ${l.titre} : ${l.accroche}\nÀ débattre : « ${l.debat} »`;
     try {
-      if (navigator.share) await navigator.share({ title: l.titre, text, url });
-      else { await navigator.clipboard.writeText(text + '\n' + url); toast('Lien copié 📋'); }
-    } catch (e) { if (e && e.name !== 'AbortError') toast('Impossible de partager pour le moment.'); }
+      if (navigator.share) await navigator.share({ title: l.titre, text: texte, url });
+      else { await navigator.clipboard.writeText(texte + '\n' + url); toast('Lien copié'); }
+    } catch (e) { if (e && e.name !== 'AbortError') toast('Partage impossible pour le moment.'); }
   }
 
-  function showLesson(l, fresh) {
-    $('#stage').innerHTML = (isToday ? '' : `<div class="banner">🕰️ Tu consultes une ancienne découverte. <a href="./">Revenir à celle du jour</a></div>`)
-      + lessonHTML(l) + (isToday ? '<p class="muted center small" id="countdown"></p>' : '');
-    $('#share').onclick = () => share(l);
-    if (fresh) confetti();
-    renderDebate(l);
-    if (isToday) tick();
-  }
-
-  function tick() {
-    const el = $('#countdown'); if (!el) return;
+  function tic() {
+    const el = $('#compte'); if (!el) return;
     const p = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' })
-      .formatToParts(new Date()).reduce((a, x) => { a[x.type] = Number(x.value); return a; }, {});
-    const left = 86400 - (p.hour * 3600 + p.minute * 60 + p.second);
+      .formatToParts(new Date()).reduce((a, x) => (a[x.type] = Number(x.value), a), {});
+    const reste = 86400 - (p.hour * 3600 + p.minute * 60 + p.second);
     const z = v => String(v).padStart(2, '0');
-    el.textContent = `Prochaine découverte dans ${z(Math.floor(left / 3600))}:${z(Math.floor(left % 3600 / 60))}:${z(left % 60)}`;
-    if (left <= 1) { setTimeout(() => location.reload(), 1500); return; }
-    setTimeout(tick, 1000);
+    el.textContent = `Prochaine découverte dans ${z(Math.floor(reste / 3600))}:${z(Math.floor(reste % 3600 / 60))}:${z(reste % 60)}`;
+    if (reste <= 1) return setTimeout(() => location.reload(), 1500);
+    setTimeout(tic, 1000);
   }
 
-  /* ---- Le débat ---- */
-  async function renderDebate(l) {
-    const wrap = $('#debate-wrap');
-    wrap.innerHTML = `<h2 class="section-title">À débattre</h2>
-      <div class="card"><p class="statement">« ${esc(l.debat)} »</p><div id="debate-body"></div></div>`;
-    const box = $('#debate-body');
+  /* ---------- Le débat ---------- */
+  async function debat(l) {
+    const zone = $('#debat');
+    zone.innerHTML = `<div class="sec"><h2>À débattre</h2></div>
+      <div class="card"><p style="font-family:var(--display);font-weight:700;font-size:1.2rem;line-height:1.25">« ${esc(l.debat)} »</p><div id="d-corps"></div></div>`;
+    const box = $('#d-corps');
     if (!user) {
-      box.innerHTML = `<p class="muted">Connecte-toi pour donner ton avis et lire ceux des autres.</p><a class="btn" href="../connexion/">Me connecter</a>`;
+      box.innerHTML = `<p class="muted">Connecte-toi pour donner ton avis et lire ceux des autres.</p><a class="btn" href="${BASE}connexion/">Me connecter</a>`;
       return;
     }
-    box.innerHTML = '<p class="muted center"><span class="spinner"></span>Chargement…</p>';
-    const { data, error } = await sb.from('daily_takes').select('id,user_id,parent_id,stance,body,created_at')
-      .eq('lesson', l.id).order('created_at', { ascending: true }).limit(500);
+    box.innerHTML = '<p class="muted"><span class="spinner"></span>Chargement…</p>';
+    const { data, error } = await sb.from('daily_takes').select('*')
+      .eq('lesson', l.id).order('created_at', { ascending: true }).limit(400);
     if (error) {
-      console.warn(error);
-      box.innerHTML = `<p class="muted">Le débat ouvre bientôt ici : tu pourras dire si tu es plutôt d'accord ou non, et répondre aux autres. En attendant, lance la discussion avec le bouton « Partager ». 💬</p>`;
+      box.innerHTML = `<p class="muted">Le débat ouvrira ici : tu pourras dire si tu es d'accord ou non, et répondre aux autres. En attendant, lance la discussion avec le bouton « Partager ».</p>`;
       return;
     }
-    const rows = data || [];
-    const tops = rows.filter(r => !r.parent_id).reverse();
-    const reps = {};
-    rows.filter(r => r.parent_id).forEach(r => { (reps[r.parent_id] = reps[r.parent_id] || []).push(r); });
-    const people = {};
-    const uids = [...new Set(rows.map(r => r.user_id))];
+    const lignes = (data || []).filter(r => !r.hidden);
+    const avis = lignes.filter(r => !r.parent_id).reverse();
+    const reponses = {};
+    lignes.filter(r => r.parent_id).forEach(r => (reponses[r.parent_id] = reponses[r.parent_id] || []).push(r));
+    const gens = {};
+    const uids = [...new Set(lignes.map(r => r.user_id))];
     if (uids.length) {
       const { data: pr } = await sb.from('profiles').select('id,username,avatar_path').in('id', uids);
-      (pr || []).forEach(p => { people[p.id] = p; });
+      (pr || []).forEach(p => { gens[p.id] = p; });
     }
-    const who = id => people[id] || { username: 'membre' };
-    const mine = tops.find(r => r.user_id === user.id);
-    const yes = tops.filter(r => r.stance === 'pour').length, no = tops.filter(r => r.stance === 'contre').length, tot = yes + no;
-    let stance = mine ? mine.stance : null;
+    const qui = id => gens[id] || { username: 'membre' };
+    const mien = avis.find(r => r.user_id === user.id);
+    const oui = avis.filter(r => r.stance === 'pour').length, non = avis.filter(r => r.stance === 'contre').length, tot = oui + non;
+    let position = mien ? mien.stance : null;
 
-    const replyHTML = r => { const p = who(r.user_id);
-      return `<div class="reply">${avatarHTML(p, 'sm')}<div><b>${esc(p.username)}</b> <small class="muted">· ${ago(r.created_at)}</small>
-        <p>${esc(r.body)}</p>${r.user_id === user.id ? `<button type="button" class="link" data-del="${r.id}">Supprimer</button>` : ''}</div></div>`; };
-    const takeHTML = r => { const p = who(r.user_id), rs = reps[r.id] || [], link = `../profil/?u=${encodeURIComponent(p.username)}`;
-      return `<article class="take">
-        <div class="take-head"><a href="${link}">${avatarHTML(p, 'sm')}</a>
-          <div><a href="${link}"><b>${esc(p.username)}</b></a> <span class="pill ${r.stance}">${r.stance === 'pour' ? "👍 d'accord" : "👎 pas d'accord"}</span>
+    const repHTML = r => { const p = qui(r.user_id);
+      return `<div class="row" style="align-items:flex-start;gap:9px;margin:9px 0 0 16px;padding-left:10px;border-left:3px solid var(--line)">
+        ${avatarHTML(p, 'sm')}<div style="flex:1;min-width:0"><b>${esc(p.username)}</b> <small class="muted">· ${ago(r.created_at)}</small>
+        <p style="margin:4px 0">${esc(r.body)}</p>
+        <small>${r.user_id === user.id ? `<button type="button" class="link" data-del="${r.id}">Supprimer</button>` : signalerBtn('take', r.id)}</small></div></div>`; };
+
+    const avisHTML = r => { const p = qui(r.user_id), rs = reponses[r.id] || [], lien = `${BASE}profil/?u=${encodeURIComponent(p.username)}`;
+      return `<article style="border-top:1px solid var(--line);padding:14px 0">
+        <div class="row" style="margin-bottom:6px"><a href="${lien}">${avatarHTML(p, 'sm')}</a>
+          <div style="flex:1;min-width:0"><a href="${lien}" style="text-decoration:none"><b>${esc(p.username)}</b></a>
+          <span class="tag ${r.stance === 'pour' ? 'good' : 'bad'}">${r.stance === 'pour' ? "👍 d'accord" : "👎 pas d'accord"}</span>
           <small class="muted"> · ${ago(r.created_at)}</small></div></div>
-        ${r.body ? `<p>${esc(r.body)}</p>` : ''}
-        <div class="small"><button type="button" class="link" data-reply="${r.id}">Répondre${rs.length ? ' (' + rs.length + ')' : ''}</button>${r.user_id === user.id ? ` · <button type="button" class="link" data-del="${r.id}">Supprimer</button>` : ''}</div>
-        ${rs.map(replyHTML).join('')}
-        <div class="reply-box" id="rb-${r.id}" hidden><input type="text" maxlength="400" placeholder="Ta réponse…" aria-label="Ta réponse"><button type="button" class="btn small" data-send="${r.id}">Envoyer</button></div>
+        ${r.body ? `<p style="margin:6px 0">${esc(r.body)}</p>` : ''}
+        <small><button type="button" class="link" data-rep="${r.id}">Répondre${rs.length ? ' (' + rs.length + ')' : ''}</button>
+          · ${r.user_id === user.id ? `<button type="button" class="link" data-del="${r.id}">Supprimer</button>` : signalerBtn('take', r.id)}</small>
+        ${rs.map(repHTML).join('')}
+        <div class="row" style="margin:10px 0 0 16px" id="rb-${r.id}" hidden>
+          <input type="text" maxlength="400" placeholder="Ta réponse…" aria-label="Ta réponse">
+          <button type="button" class="btn small" data-env="${r.id}">Envoyer</button></div>
       </article>`; };
 
     box.innerHTML = `
-      ${tot ? `<div class="votebar" role="img" aria-label="${yes} d'accord, ${no} pas d'accord"><i class="y" style="width:${yes / tot * 100}%"></i><i class="n" style="width:${no / tot * 100}%"></i></div>
-        <p class="muted small">👍 ${yes} plutôt d'accord · 👎 ${no} plutôt pas d'accord</p>` : '<p class="muted">Personne n\'a encore donné son avis : sois le premier !</p>'}
-      <div class="mytake"><b>${mine ? 'Ton avis' : 'Et toi, tu en penses quoi ?'}</b>
-        <div class="stance" id="stance">
-          <button type="button" class="pin" data-s="pour" aria-pressed="${stance === 'pour'}">👍 Plutôt d'accord</button>
-          <button type="button" class="pin" data-s="contre" aria-pressed="${stance === 'contre'}">👎 Plutôt pas d'accord</button>
+      ${tot ? `<div style="display:flex;height:14px;border-radius:99px;overflow:hidden;background:var(--surface-2);margin:4px 0">
+          <i style="width:${oui / tot * 100}%;background:var(--good)"></i><i style="width:${non / tot * 100}%;background:var(--bad)"></i></div>
+        <p class="muted" style="font-size:.88rem">👍 ${oui} d'accord · 👎 ${non} pas d'accord</p>`
+        : `<p class="muted">Personne n'a encore donné son avis. Lance-toi.</p>`}
+      <div style="background:var(--surface-2);border-radius:var(--radius-sm);padding:14px;margin:14px 0">
+        <b>${mien ? 'Ton avis' : 'Et toi, tu en penses quoi ?'}</b>
+        <div class="row" style="gap:8px;margin:10px 0" id="pos">
+          <button type="button" class="tag ${position === 'pour' ? 'on' : ''}" data-p="pour" aria-pressed="${position === 'pour'}">👍 D'accord</button>
+          <button type="button" class="tag ${position === 'contre' ? 'on' : ''}" data-p="contre" aria-pressed="${position === 'contre'}">👎 Pas d'accord</button>
         </div>
-        <textarea id="take-body" maxlength="400" rows="3" placeholder="Ton argument en quelques mots (facultatif)">${esc(mine ? mine.body : '')}</textarea>
-        <div class="cta-row" style="margin-top:10px"><button type="button" class="btn small" id="take-save">${mine ? 'Mettre à jour' : 'Publier mon avis'}</button></div>
+        <textarea id="d-txt" maxlength="400" rows="3" placeholder="Ton argument en quelques mots (facultatif)">${esc(mien ? mien.body : '')}</textarea>
+        <button type="button" class="btn small" id="d-go" style="margin-top:10px">${mien ? 'Mettre à jour' : 'Publier mon avis'}</button>
       </div>
-      ${tops.map(takeHTML).join('')}`;
+      ${avis.map(avisHTML).join('')}`;
 
-    $('#stance').addEventListener('click', e => {
-      const b = e.target.closest('[data-s]'); if (!b) return;
-      stance = b.dataset.s;
-      $$('#stance .pin').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-    });
-    $('#take-save').onclick = async () => {
-      if (!stance) { toast("Choisis d'abord : plutôt d'accord ou pas ?"); return; }
-      const text = $('#take-body').value.trim().slice(0, 400);
-      const res = mine
-        ? await sb.from('daily_takes').update({ stance, body: text }).eq('id', mine.id)
-        : await sb.from('daily_takes').insert({ lesson: l.id, user_id: user.id, stance, body: text });
-      if (res.error) { toast('Oups : ' + res.error.message); return; }
-      toast('Avis enregistré ✅'); renderDebate(l);
+    $('#pos').onclick = e => {
+      const b = e.target.closest('[data-p]'); if (!b) return;
+      position = b.dataset.p;
+      $$('#pos [data-p]').forEach(x => { const on = x === b; x.setAttribute('aria-pressed', String(on)); x.classList.toggle('on', on); });
+    };
+    $('#d-go').onclick = async () => {
+      if (!position) return toast("Choisis d'abord : d'accord ou pas d'accord ?");
+      const t = $('#d-txt').value.trim().slice(0, 400);
+      if (bloqueSiInterdit(t)) return;
+      const res = mien
+        ? await sb.from('daily_takes').update({ stance: position, body: t }).eq('id', mien.id)
+        : await sb.from('daily_takes').insert({ lesson: l.id, user_id: user.id, stance: position, body: t });
+      if (res.error) return toast('Oups : ' + res.error.message);
+      toast('Avis enregistré'); debat(l);
     };
     box.addEventListener('click', async e => {
-      const r = e.target.closest('[data-reply]'), s = e.target.closest('[data-send]'), d = e.target.closest('[data-del]');
-      if (r) { const rb = $('#rb-' + r.dataset.reply); rb.hidden = !rb.hidden; if (!rb.hidden) $('input', rb).focus(); }
-      if (s) {
-        const text = $('input', s.parentElement).value.trim().slice(0, 400);
-        if (!text) return;
-        const { error: er } = await sb.from('daily_takes').insert({ lesson: l.id, user_id: user.id, parent_id: s.dataset.send, body: text });
-        if (er) { toast('Oups : ' + er.message); return; }
-        renderDebate(l);
+      const rep = e.target.closest('[data-rep]'), env = e.target.closest('[data-env]'), del = e.target.closest('[data-del]');
+      if (rep) { const b = $('#rb-' + rep.dataset.rep); b.hidden = !b.hidden; if (!b.hidden) $('input', b).focus(); }
+      if (env) {
+        const champ = $('input', env.parentElement), t = champ.value.trim().slice(0, 400);
+        if (!t || bloqueSiInterdit(t)) return;
+        const { error: er } = await sb.from('daily_takes').insert({ lesson: l.id, user_id: user.id, parent_id: env.dataset.env, body: t });
+        if (er) return toast('Oups : ' + er.message);
+        debat(l);
       }
-      if (d) {
-        if (!confirm('Supprimer ce message ?')) return;
-        const { error: er } = await sb.from('daily_takes').delete().eq('id', d.dataset.del);
-        if (er) { toast('Oups : ' + er.message); return; }
-        renderDebate(l);
+      if (del) {
+        const { error: er } = await sb.from('daily_takes').delete().eq('id', del.dataset.del);
+        if (er) return toast('Oups : ' + er.message);
+        debat(l);
       }
     });
   }
 
-  /* ---- Page ---- */
-  main.innerHTML = `
-    <section class="hero tight">
-      <span class="tape">Le déclic du jour</span>
-      <h1>Un truc nouveau, chaque jour.</h1>
-      <p class="lead">Une découverte par jour, la même pour tout le monde. Appuie, apprends, puis viens en débattre.</p>
-      <div class="stats" id="stats"></div>
-    </section>
-    <div id="stage"></div>
-    <div id="debate-wrap"></div>
-    <h2 class="section-title">Quand tu n'as rien à faire</h2>
-    <div class="archive" id="archive"></div>`;
-  drawStats();
-
-  const learned = readStore()[todayISO] === today.id;
-  if (!isToday || learned) showLesson(view, false);
+  /* ---------- Démarrage ---------- */
+  compteurs();
+  const dejaVu = (store.get('declics', {}))[aujourdhui] === duJour.id;
+  if (!cEstAujourdhui || dejaVu) afficher(vue, false);
   else {
-    $('#stage').innerHTML = `<div class="card reveal"><div class="big-emoji">💡</div>
-      <h2>Ta découverte du jour t'attend</h2>
-      <p class="muted">Une seule par jour, et tout le monde reçoit la même.</p>
-      <button type="button" class="btn big" id="reveal">✨ Apprendre quelque chose de nouveau</button></div>`;
-    $('#reveal').onclick = () => {
-      const st = readStore(); st[todayISO] = today.id; writeStore(st);
-      drawStats(); showLesson(today, true);
+    $('#scene').innerHTML = `<div class="card empty">
+      <div class="em">💡</div><h2>Ta découverte du jour t'attend</h2>
+      <p class="muted">Une par jour, et tout le monde reçoit la même.</p>
+      <button type="button" class="btn" id="ouvrir" style="margin-top:14px">Apprendre quelque chose</button></div>`;
+    $('#ouvrir').onclick = () => {
+      const v = store.get('declics', {}); v[aujourdhui] = duJour.id; store.set('declics', v);
+      compteurs(); afficher(duJour, true);
     };
   }
 
-  $('#archive').innerHTML = past.length
-    ? past.map(({ l, day }) => `<details class="card fold"><summary>${l.emoji} <b>${esc(l.titre)}</b> <small class="muted">· ${esc(dateLabel(day))}</small></summary>
-        <div class="fold-in"><p class="acc">${esc(l.accroche)}</p>${bodyHTML(l)}
-        <a class="btn small" href="?l=${encodeURIComponent(l.id)}">Voir le débat</a></div></details>`).join('')
-    : `<div class="card"><p class="muted">Les découvertes passées apparaîtront ici au fil des jours.</p></div>`;
+  $('#archive').innerHTML = passees.length
+    ? passees.map(({ l, j }) => `<details class="step"><summary><span class="num">${l.emoji}</span><span>${esc(l.titre)}</span></summary>
+        <div class="inner"><p class="muted">${esc(dateCourte(j))} · ${esc(l.accroche)}</p>${corps(l)}
+        <a class="btn ghost small" href="?l=${encodeURIComponent(l.id)}">Voir le débat</a></div></details>`).join('')
+    : `<div class="card empty"><p class="muted">Les découvertes passées apparaîtront ici au fil des jours.</p></div>`;
 })();
+
 </script>
 </body>
 </html>

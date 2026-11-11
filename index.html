@@ -3,114 +3,185 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>EasyYourLife – des outils pour te simplifier la vie</title>
-<meta name="description" content="Des outils gratuits pour te simplifier la vie. Montre ta progression, gagne des badges et partage avec tes amis.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✨</text></svg>">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="assets/icon-180.png">
+<title>EasyYourLife — des outils pour se simplifier la vie</title>
+<meta name="description" content="Des petits outils gratuits pour le quotidien : ranger sa maison, apprendre un truc par jour, et partager avec ses amis.">
+<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121317" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./assets/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="EasyYourLife">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="assets/style.css?v=93b0748d">
-<script src="assets/theme.js?v=229c1bf4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="./assets/eyl.css?v=c2aa9f9b">
 </head>
 <body data-base="./">
 <header id="nav"></header>
-<main class="wrap" id="main"><p class="muted">Chargement…</p></main>
+<main class="wrap" id="main"><p class="muted"><span class="spinner"></span>Chargement…</p></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="assets/app.js?v=6c603325"></script>
-<script src="assets/rooms.js?v=5d6925fa"></script>
+<script src="./assets/outils.js?v=493391f2"></script>
+<script src="./assets/nouveautes.js?v=c688f9d4"></script>
+<script src="./assets/eyl.js?v=9fbf10bb"></script>
 <script>
+
 (async () => {
   const user = await initPage();
   const main = $('#main');
 
+  /* ---------- Visiteur non connecté ---------- */
   if (!user) {
-    main.innerHTML = `<section class="hero">
-        <h1>Des outils pour te simplifier la vie.</h1>
-        <p class="lead">Utilise un outil, montre ta progression, gagne des badges et partage le résultat avec tes amis.</p>
-        <div class="cta-row"><a class="btn big" href="connexion/">Créer mon compte</a><a class="btn big ghost" href="#outils">Voir les outils</a></div>
+    main.innerHTML = `
+      <section style="padding:10px 0 4px">
+        <h1>Des petits outils pour se simplifier la vie.</h1>
+        <p class="muted">Un outil par problème du quotidien. Tu gardes tes progrès, et tu partages ce que tu veux avec tes amis — ou avec personne.</p>
+        <div class="btn-row" style="margin-top:18px">
+          <a class="btn" href="connexion/">Créer mon compte</a>
+          <a class="btn ghost" href="outils/">Voir les outils</a>
+        </div>
       </section>
-      <h2 class="section-title" id="outils">Les outils</h2>
-      <section id="tools" class="grid"></section>`;
-    renderTools($('#tools'));
-    installHint(main);
+      <div class="sec"><h2>Les outils</h2><a href="outils/">Tout voir</a></div>
+      <div class="tools" id="tools"></div>
+      <div class="sec"><h2>Quoi de neuf</h2><a href="nouveautes/">Tout voir</a></div>
+      <div class="news" id="news"></div>`;
+    $('#tools').innerHTML = OUTILS.map(o => tuileOutil(o)).join('');
+    $('#news').innerHTML = NOUVEAUTES.slice(0, 2).map(n => {
+      const t = TYPES[n.type] || TYPES.nouveau;
+      return `<article class="news-item"><span class="tag">${t.emoji} ${esc(t.nom)}</span><h3>${esc(n.titre)}</h3><p>${esc(n.texte)}</p></article>`;
+    }).join('');
+    astuceInstall(main);
     return;
   }
 
-  main.innerHTML = `<div class="bubbles" id="bubbles" aria-label="Outils"></div>
-    <div class="seg" id="feedtabs" style="max-width:580px;margin:0 auto 18px"><button type="button" data-f="amis" aria-selected="true">Mes amis</button><button type="button" data-f="public" aria-selected="false">Découvrir</button></div>
-    <div class="feed" id="feed"></div>
-    <h2 class="section-title" id="outils">Les outils</h2>
-    <section id="tools" class="grid"></section>`;
-  renderTools($('#tools'));
-  installHint(main);
-  $('#bubbles').innerHTML = TOOLS.map(t => t.statut === 'dispo'
-    ? `<a class="bubble" href="${t.href}"><span class="ring"><span class="in">${t.emoji}</span></span>${esc(t.nom)}</a>`
-    : `<span class="bubble soon"><span class="ring"><span class="in">${t.emoji}</span></span>Bientôt</span>`).join('');
+  /* ---------- Membre connecté ---------- */
+  const prenom = (ME && ME.username) || 'toi';
+  main.innerHTML = `
+    <div class="row spread" style="margin-bottom:14px">
+      <h1 style="margin:0">Salut ${esc(prenom)}</h1>
+    </div>
+    <div id="stories-zone"></div>
+    <div class="sec"><h2>Tes outils</h2><a href="outils/">Tout voir</a></div>
+    <div class="tools" id="favs"></div>
+    <div id="suggest"></div>
+    <div class="sec"><h2>Découvrir des membres</h2></div>
+    <div id="decouvrir"><p class="muted"><span class="spinner"></span>Chargement…</p></div>`;
+  astuceInstall(main);
 
-  const friendIds = new Set();
+  /* --- Favoris --- */
+  function dessinerFavoris() {
+    const favs = favoris();
+    const liste = OUTILS.filter(o => favs.includes(o.id));
+    $('#favs').innerHTML = (liste.length ? liste : OUTILS).map(o => tuileOutil(o, { favori: true })).join('');
+    const reste = OUTILS.filter(o => !favs.includes(o.id) && o.statut === 'dispo');
+    $('#suggest').innerHTML = liste.length && reste.length
+      ? `<p class="muted" style="margin-top:12px;font-size:.9rem">Pas encore épinglé : ${reste.map(o => `<a href="${BASE}${o.href}">${esc(o.nom)}</a>`).join(', ')}.</p>` : '';
+  }
+  window.onFavorisChange = dessinerFavoris;
+  dessinerFavoris();
+
+  /* --- Stories des amis --- */
+  const amis = new Set();
   const { data: fr } = await sb.from('friendships').select('requester_id,addressee_id').eq('status', 'accepted');
-  (fr || []).forEach(f => friendIds.add(f.requester_id === user.id ? f.addressee_id : f.requester_id));
+  (fr || []).forEach(f => amis.add(f.requester_id === user.id ? f.addressee_id : f.requester_id));
 
-  async function loadFeed(kind) {
-    const feed = $('#feed');
-    feed.innerHTML = '<p class="muted center"><span class="spinner"></span>Chargement…</p>';
-    const { data: all } = await sb.from('projects').select('id,user_id,room,title,caption,visibility,completed_at,progress')
-      .eq('status', 'done').neq('user_id', user.id).order('completed_at', { ascending: false }).limit(40);
-    const projs = (all || []).filter(p => kind === 'amis' ? friendIds.has(p.user_id) : p.visibility === 'public');
-    if (!projs.length) {
-      feed.innerHTML = kind === 'amis'
-        ? `<div class="card empty"><span class="big-emoji">👥</span><h3>Rien à voir pour l'instant</h3><p class="muted">Quand tes amis partageront un avant/après, il apparaîtra ici. Cherche des amis depuis ton profil, ou lance ton propre projet.</p><div class="cta-row" style="justify-content:center"><a class="btn" href="rangement/?nouveau=1">Lancer un projet</a><a class="btn ghost" href="profil/">Trouver des amis</a></div></div>`
-        : `<div class="card empty"><span class="big-emoji">🌍</span><h3>Aucun projet public pour le moment</h3><p class="muted">Sois le premier : termine un projet et choisis « Tous les membres ».</p><a class="btn" href="rangement/?nouveau=1">Lancer un projet</a></div>`;
-      return;
-    }
-    const ids = projs.map(p => p.id), uids = [...new Set(projs.map(p => p.user_id))];
-    const [pr, media, likes] = await Promise.all([
+  const depuis = new Date(Date.now() - 21 * 86400000).toISOString();
+  const { data: projs } = await sb.from('projects')
+    .select('id,user_id,room,title,caption,visibility,completed_at')
+    .eq('status', 'done').gte('completed_at', depuis)
+    .order('completed_at', { ascending: false }).limit(60);
+
+  const recents = (projs || []).filter(p => p.user_id === user.id || amis.has(p.user_id) || p.visibility === 'public');
+  const parPersonne = new Map();
+  recents.forEach(p => {
+    const k = p.user_id;
+    if (!parPersonne.has(k)) parPersonne.set(k, []);
+    parPersonne.get(k).push(p);
+  });
+
+  const zone = $('#stories-zone');
+  if (!parPersonne.size) {
+    zone.innerHTML = `<div class="card empty">
+      <div class="em">📸</div>
+      <h2>Rien de neuf chez tes amis</h2>
+      <p class="muted">Dès qu'un ami termine quelque chose, sa photo apparaît ici. En attendant, lance-toi.</p>
+      <div class="btn-row" style="justify-content:center;margin-top:14px">
+        <a class="btn" href="rangement/">Commencer une pièce</a>
+        <a class="btn ghost" href="profil/">Trouver des amis</a>
+      </div></div>`;
+  } else {
+    const uids = [...parPersonne.keys()];
+    const [prof, med] = await Promise.all([
       sb.from('profiles').select('id,username,avatar_path').in('id', uids),
-      projectMedia(ids), likeInfo(ids, user.id)
+      sb.from('media').select('id,project_id,user_id,kind,storage_path,position,caption')
+        .in('project_id', recents.map(p => p.id)).order('position')
     ]);
-    const people = {}; (pr.data || []).forEach(p => { people[p.id] = p; });
-    const best = {}; ids.forEach(id => { best[id] = bestPair(media[id]); });
-    const urls = await signedMap(ids.flatMap(id => best[id] ? [best[id].before && best[id].before.storage_path, best[id].after && best[id].after.storage_path] : []));
-    feed.innerHTML = projs.map(p => {
-      const who = people[p.user_id] || { username: 'membre' };
-      const room = ROOMS.find(r => r.id === p.room);
-      const b = best[p.id], L = likes[p.id];
-      const nDone = Object.keys(((p.progress || {}).checked) || {}).length;
-      const visual = b
-        ? (b.before ? sliderHTML(urls[b.before.storage_path], b.after ? urls[b.after.storage_path] : null) : singleHTML(urls[b.after.storage_path], 'Après'))
-        : `<div class="nophoto"><span class="big-emoji">${room ? room.emoji : '🏠'}</span><b>${nDone ? nDone + ' tâche' + (nDone > 1 ? 's' : '') + ' terminée' + (nDone > 1 ? 's' : '') : 'Projet terminé'}</b></div>`;
-      const link = `profil/?u=${encodeURIComponent(who.username)}`;
-      return `<article class="card post" data-id="${p.id}">
-        <div class="post-head"><a href="${link}">${avatarHTML(who, 'sm')}</a><div><a href="${link}">${esc(who.username)}</a><small>${room ? room.emoji + ' ' + esc(room.nom) + ' · ' : ''}${ago(p.completed_at)}</small></div></div>
-        ${visual}
-        <div class="post-body">
-          <div class="post-actions"><button type="button" class="like" data-like="${p.id}" aria-pressed="${L.mine}" aria-label="J'aime"><span class="h">${L.mine ? '❤️' : '🤍'}</span><span class="n">${L.n}</span></button><a href="projet/?id=${p.id}">Voir le projet</a></div>
-          <p><b>${esc(who.username)}</b> ${esc(p.caption || p.title)}</p>
-        </div></article>`;
-    }).join('');
-    initSliders(feed);
+    const gens = {}; (prof.data || []).forEach(p => { gens[p.id] = p; });
+    const photos = med.data || [];
+    const urls = await signedMap(photos.map(m => m.storage_path));
+
+    const dots = uids.map(uid => {
+      const liste = parPersonne.get(uid);
+      const items = [];
+      liste.forEach(p => {
+        const ap = photos.filter(m => m.project_id === p.id && m.kind === 'after' && urls[m.storage_path]);
+        const av = photos.filter(m => m.project_id === p.id && m.kind === 'before' && urls[m.storage_path]);
+        (ap.length ? ap : av).slice(0, 3).forEach(m => items.push({
+          url: urls[m.storage_path], legende: m.caption || p.caption || p.title, quand: ago(p.completed_at), projet: p.id
+        }));
+      });
+      return { uid, qui: gens[uid] || { username: 'membre' }, items, quand: liste[0].completed_at };
+    }).filter(d => d.items.length);
+
+    if (!dots.length) {
+      zone.innerHTML = `<div class="note"><span class="em">👋</span><span>Tes amis ont bien avancé, mais sans photo pour l'instant. <a href="${BASE}outils/">Et toi&nbsp;?</a></span></div>`;
+    } else {
+      // Soi-même en premier, puis les plus récents
+      dots.sort((a, b) => (b.uid === user.id) - (a.uid === user.id) || new Date(b.quand) - new Date(a.quand));
+      zone.innerHTML = `<div class="stories" id="stories">${dots.map((d, i) => {
+        const frais = Date.now() - new Date(d.quand).getTime() < 3 * 86400000;
+        const nom = d.uid === user.id ? 'Toi' : d.qui.username;
+        return `<button type="button" class="story-dot ${frais ? 'fresh' : ''}" data-i="${i}">
+          <span class="ring">${avatarHTML(d.qui)}</span><span>${esc(nom)}</span></button>`;
+      }).join('')}</div>`;
+      $('#stories').onclick = e => {
+        const b = e.target.closest('[data-i]'); if (!b) return;
+        const d = dots[Number(b.dataset.i)];
+        ouvrirStories(d.items, { qui: d.uid === user.id ? 'Toi' : d.qui.username, avatar: avatarHTML(d.qui, 'sm') });
+      };
+    }
   }
 
-  $('#feedtabs').addEventListener('click', e => {
-    const b = e.target.closest('[data-f]'); if (!b) return;
-    $$('#feedtabs button').forEach(x => x.setAttribute('aria-selected', x === b));
-    loadFeed(b.dataset.f);
-  });
-  $('#feed').addEventListener('click', async e => {
-    const b = e.target.closest('[data-like]'); if (!b) return;
-    const liked = b.getAttribute('aria-pressed') === 'true';
-    const n = $('.n', b), h = $('.h', b);
-    b.setAttribute('aria-pressed', String(!liked)); h.textContent = liked ? '🤍' : '❤️'; n.textContent = Math.max(0, Number(n.textContent) + (liked ? -1 : 1));
-    const { error } = await toggleLike(b.dataset.like, user.id, liked);
-    if (error) { b.setAttribute('aria-pressed', String(liked)); h.textContent = liked ? '❤️' : '🤍'; n.textContent = Math.max(0, Number(n.textContent) + (liked ? 1 : -1)); toast('Oups : ' + error.message); }
-  });
-
-  await loadFeed(friendIds.size ? 'amis' : 'public');
-  if (!friendIds.size) $$('#feedtabs button').forEach(x => x.setAttribute('aria-selected', x.dataset.f === 'public'));
+  /* --- Découvrir : comptes publics actifs --- */
+  const dec = $('#decouvrir');
+  async function comptesPublics() {
+    const r = await sb.from('profiles').select('id,username,avatar_path,bio,last_seen_at')
+      .eq('is_public', true).neq('id', user.id)
+      .order('last_seen_at', { ascending: false }).limit(12);
+    if (!r.error) return { liste: r.data || [], exact: true };
+    // La base n'a pas encore les colonnes : on se rabat sur les auteurs de projets publics.
+    const pub = (projs || []).filter(p => p.visibility === 'public' && p.user_id !== user.id);
+    const ids = [...new Set(pub.map(p => p.user_id))].slice(0, 12);
+    if (!ids.length) return { liste: [], exact: false };
+    const { data } = await sb.from('profiles').select('id,username,avatar_path,bio').in('id', ids);
+    return { liste: data || [], exact: false };
+  }
+  const { liste, exact } = await comptesPublics();
+  const aDecouvrir = liste.filter(p => !amis.has(p.id));
+  if (!aDecouvrir.length) {
+    dec.innerHTML = `<div class="card empty"><div class="em">🌍</div><h2>Personne à découvrir pour l'instant</h2>
+      <p class="muted">Les membres qui rendent leur compte public apparaissent ici. Tu peux rendre le tien public depuis ton profil.</p>
+      <a class="btn ghost" href="profil/" style="margin-top:12px">Ouvrir mon profil</a></div>`;
+  } else {
+    dec.innerHTML = `<div class="card flat"><div class="list">${aDecouvrir.map(p => {
+      const actif = exact && p.last_seen_at && Date.now() - new Date(p.last_seen_at).getTime() < 7 * 86400000;
+      return `<a class="item" href="profil/?u=${encodeURIComponent(p.username)}">
+        ${avatarHTML(p)}
+        <span class="item-body"><b>${esc(p.username)}</b><small>${esc(p.bio || 'Membre EasyYourLife')}</small></span>
+        ${actif ? '<span class="tag good">actif</span>' : ''}</a>`;
+    }).join('')}</div></div>`;
+  }
 })();
+
 </script>
 </body>
 </html>

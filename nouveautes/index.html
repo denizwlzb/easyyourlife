@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quoi de neuf – EasyYourLife</title>
+<meta name="description" content="Tous les changements du site : nouveaux outils, améliorations, corrections.">
+<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121317" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../assets/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EasyYourLife">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="../assets/eyl.css?v=c2aa9f9b">
+</head>
+<body data-base="../">
+<header id="nav"></header>
+<main class="wrap" id="main"><p class="muted"><span class="spinner"></span>Chargement…</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../assets/outils.js?v=493391f2"></script>
+<script src="../assets/nouveautes.js?v=c688f9d4"></script>
+<script src="../assets/eyl.js?v=9fbf10bb"></script>
+<script>
+
+(async () => {
+  await initPage();
+  const main = $('#main');
+  const vuAvant = store.get('news-vu', '');
+
+  const liste = [...NOUVEAUTES].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const typesPresents = [...new Set(liste.map(n => n.type))];
+  const outilsPresents = [...new Set(liste.map(n => n.outil).filter(Boolean))];
+  let filtre = 'tout';
+
+  main.innerHTML = `<h1>Quoi de neuf</h1>
+    <p class="muted">Tout ce qui change sur le site, du nouvel outil à la simple retouche de couleur.</p>
+    <div class="filters" id="filtres">
+      <button type="button" data-f="tout" aria-pressed="true">Tout</button>
+      ${typesPresents.map(t => `<button type="button" data-f="t:${t}" aria-pressed="false">${TYPES[t].emoji} ${esc(TYPES[t].nom)}</button>`).join('')}
+      ${outilsPresents.map(id => { const o = outilById(id); return o ? `<button type="button" data-f="o:${id}" aria-pressed="false">${o.emoji} ${esc(o.nom)}</button>` : ''; }).join('')}
+    </div>
+    <div class="news" id="liste"></div>`;
+
+  const dateLongue = d => new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  function dessiner() {
+    const vus = liste.filter(n => filtre === 'tout'
+      || (filtre.startsWith('t:') && n.type === filtre.slice(2))
+      || (filtre.startsWith('o:') && n.outil === filtre.slice(2)));
+    if (!vus.length) { $('#liste').innerHTML = `<div class="card empty"><div class="em">🗒️</div><p class="muted">Rien dans cette catégorie pour l'instant.</p></div>`; return; }
+    let jour = '';
+    $('#liste').innerHTML = vus.map(n => {
+      const t = TYPES[n.type] || TYPES.nouveau;
+      const o = n.outil ? outilById(n.outil) : null;
+      const entete = n.date !== jour ? (jour = n.date, `<p class="news-day">${esc(dateLongue(n.date))}</p>`) : '';
+      const neuf = n.date > vuAvant;
+      return `${entete}<article class="news-item ${neuf ? 'new' : ''}">
+        <div class="tags">
+          <span class="tag">${t.emoji} ${esc(t.nom)}</span>
+          ${o ? `<span class="tag">${o.emoji} ${esc(o.nom)}</span>` : '<span class="tag">✨ Tout le site</span>'}
+          ${neuf ? '<span class="tag on">Nouveau</span>' : ''}
+        </div>
+        <h3>${esc(n.titre)}</h3><p>${esc(n.texte)}</p>
+        ${o && o.statut === 'dispo' ? `<p style="margin-top:12px"><a class="btn ghost small" href="${BASE}${o.href}">Ouvrir ${esc(o.nom)}</a></p>` : ''}
+      </article>`;
+    }).join('');
+  }
+
+  $('#filtres').onclick = e => {
+    const b = e.target.closest('[data-f]'); if (!b) return;
+    filtre = b.dataset.f;
+    $$('#filtres button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    dessiner();
+  };
+  dessiner();
+
+  // Tout est lu : on efface la pastille (après l'affichage, pour garder les « Nouveau » visibles).
+  if (liste.length) { store.set('news-vu', liste[0].date); renderNav((await sb.auth.getSession()).data.session?.user || null); }
+})();
+
+</script>
+</body>
+</html>

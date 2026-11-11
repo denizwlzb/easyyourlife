@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Les outils – EasyYourLife</title>
+<meta name="description" content="Tous les outils EasyYourLife, classés par catégorie.">
+<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121317" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../assets/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EasyYourLife">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="../assets/eyl.css?v=c2aa9f9b">
+</head>
+<body data-base="../">
+<header id="nav"></header>
+<main class="wrap" id="main"><p class="muted"><span class="spinner"></span>Chargement…</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../assets/outils.js?v=493391f2"></script>
+<script src="../assets/nouveautes.js?v=c688f9d4"></script>
+<script src="../assets/eyl.js?v=9fbf10bb"></script>
+<script>
+
+(async () => {
+  await initPage();
+  const main = $('#main');
+  const parCat = CATEGORIES.map(c => ({ c, liste: OUTILS.filter(o => o.cat === c.id) })).filter(x => x.liste.length);
+  const orphelins = OUTILS.filter(o => !CATEGORIES.some(c => c.id === o.cat));
+  if (orphelins.length) parCat.push({ c: catById('autre'), liste: orphelins });
+
+  main.innerHTML = `<h1>Les outils</h1>
+    <p class="muted">Un outil par problème. Appuie sur l'étoile pour en épingler un sur ton accueil.</p>
+    ${parCat.map(({ c, liste }) => `
+      <div class="sec"><h2>${c.emoji} ${esc(c.nom)}</h2></div>
+      <div class="tools">${liste.map(o => tuileOutil(o, { favori: true })).join('')}</div>`).join('')}
+    <div class="note" style="margin-top:26px"><span class="em">🛠️</span>
+      <span>De nouveaux outils arrivent au fil du temps. Les changements sont listés dans <a href="${BASE}nouveautes/">Nouveautés</a>.</span></div>`;
+})();
+
+</script>
+</body>
+</html>

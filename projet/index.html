@@ -4,116 +4,127 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Projet – EasyYourLife</title>
+<meta name="description" content="Un projet EasyYourLife : avant, après, et ce qui a été fait.">
+<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121317" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="apple-touch-icon" href="../assets/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="EasyYourLife">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="../assets/style.css?v=93b0748d">
-<script src="../assets/theme.js?v=229c1bf4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="../assets/eyl.css?v=c2aa9f9b">
 </head>
 <body data-base="../">
 <header id="nav"></header>
-<main class="wrap" id="main"><p class="muted">Chargement…</p></main>
+<main class="wrap" id="main"><p class="muted"><span class="spinner"></span>Chargement…</p></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="../assets/app.js?v=6c603325"></script>
-<script src="../assets/rooms.js?v=5d6925fa"></script>
+<script src="../assets/outils.js?v=493391f2"></script>
+<script src="../assets/nouveautes.js?v=c688f9d4"></script>
+<script src="../assets/pieces.js?v=4d6c6c5c"></script>
+<script src="../assets/eyl.js?v=9fbf10bb"></script>
 <script>
+
 (async () => {
   const user = await initPage();
-  if (!user) { location.replace('../connexion/'); return; }
   const main = $('#main');
   const id = new URLSearchParams(location.search).get('id');
-  const notFound = '<div class="card empty"><span class="big-emoji">🔍</span><h2>Projet introuvable</h2><p class="muted">Il n\'existe pas, ou son auteur ne l\'a pas partagé avec toi.</p><a class="btn" href="../index.html">Retour à l\'accueil</a></div>';
-  const { data: p } = id ? await sb.from('projects').select('*').eq('id', id).maybeSingle() : { data: null };
-  if (!p) { main.innerHTML = notFound; return; }
-  const isMe = p.user_id === user.id;
-  const [own, media, likes] = await Promise.all([
+  if (!id) { location.replace(BASE + 'index.html'); return; }
+
+  const { data: p } = await sb.from('projects').select('*').eq('id', id).maybeSingle();
+  if (!p) {
+    main.innerHTML = `<div class="card empty"><div class="em">🙈</div><h2>Projet introuvable</h2>
+      <p class="muted">Il a été supprimé, ou il n'est pas partagé avec toi.</p>
+      <a class="btn ghost" href="${BASE}index.html" style="margin-top:12px">Retour à l'accueil</a></div>`;
+    return;
+  }
+  const moi = user && p.user_id === user.id;
+  document.title = p.title + ' – EasyYourLife';
+
+  const [{ data: auteur }, { data: med }, { data: aimes }] = await Promise.all([
     sb.from('profiles').select('id,username,avatar_path').eq('id', p.user_id).maybeSingle(),
-    projectMedia([p.id]), likeInfo([p.id], user.id)
+    sb.from('media').select('*').eq('project_id', p.id).order('position'),
+    sb.from('likes').select('project_id,user_id').eq('project_id', p.id)
   ]);
-  const owner = own.data || { username: 'membre' }, m = media[p.id];
-  let L = likes[p.id];
-  const urls = await signedMap([...m.before, ...m.after].map(x => x.storage_path));
-  const room = ROOMS.find(r => r.id === p.room);
-  const VIS = { private: ['🔒', 'Privé', 'Seulement toi'], friends: ['👥', 'Mes amis', 'Sur ton profil et dans leur fil'], public: ['🌍', 'Tous les membres', 'Sur ton profil et dans le fil « Découvrir »'] };
-  document.title = `${p.title} – EasyYourLife`;
+  const qui = auteur || { username: 'membre' };
+  const photos = med || [];
+  const urls = await signedMap(photos.map(m => m.storage_path));
+  const avant = photos.find(m => m.kind === 'before');
+  const apres = photos.find(m => m.kind === 'after');
+  const piece = pieceById(p.room);
+  const nAimes = (aimes || []).length;
+  let jAime = user ? (aimes || []).some(l => l.user_id === user.id) : false;
 
-  function planHTML() {
-    const pl = p.plan; if (!pl || !Array.isArray(pl.etapes)) return '';
-    const checked = (p.progress && p.progress.checked) || {};
-    return `<details class="card"><summary><b>${p.plan_source === 'ia' ? '✨ Plan personnalisé' : '📋 Plan classique'}</b></summary>
-      ${pl.resume ? `<p>${esc(pl.resume)}</p>` : ''}
-      <ol class="plan-steps">${pl.etapes.map((e, ei) => `<li><b>${esc(e.titre)}</b><ul>${(e.taches || []).map((t, ti) => `<li>${checked[ei + '-' + ti] ? '✅' : '▫️'} ${esc(t)}</li>`).join('')}</ul></li>`).join('')}</ol>
-    </details>`;
-  }
+  const VIS = { private: ['🔒', 'Personne'], friends: ['👥', 'Mes amis'], public: ['🌍', 'Tous les membres'] };
 
-  function render() {
-    const pairs = pairsOf(m);
-    const sliders = pairs.map((pr, i) => {
-      const bu = urls[pr.before.storage_path], au = pr.after ? urls[pr.after.storage_path] : null;
-      const pins = isMe ? `<div class="actions" style="margin:8px 0 0">
-          <button type="button" class="pin" data-pin="${pr.before.id}" aria-pressed="${pr.before.pinned}">📌 Avant</button>
-          ${pr.after ? `<button type="button" class="pin" data-pin="${pr.after.id}" aria-pressed="${pr.after.pinned}">📌 Après</button>` : ''}</div>` : '';
-      return `<div style="margin-bottom:22px">${sliderHTML(bu, au, 'round')}<p class="muted" style="margin:6px 0 0">${pr.before.angle ? esc(pr.before.angle) : 'Photo ' + (i + 1)}</p>${pins}</div>`;
-    }).join('');
-    const usedAfter = new Set(pairs.map(x => x.after && x.after.id).filter(Boolean));
-    const loose = m.after.filter(a => !usedAfter.has(a.id)).map(a => `<div style="margin-bottom:18px">${urls[a.storage_path] ? singleHTML(urls[a.storage_path], 'Après', 'round') : ''}${isMe ? `<div class="actions" style="margin:8px 0 0"><button type="button" class="pin" data-pin="${a.id}" aria-pressed="${a.pinned}">📌 Épingler</button></div>` : ''}</div>`).join('');
-    const nTasks = Object.keys((p.progress && p.progress.checked) || {}).length;
-    const recap = (!sliders && !loose) ? `<div class="card empty"><span class="big-emoji">${room ? room.emoji : '🏠'}</span><h3>${nTasks ? nTasks + ' tâche' + (nTasks > 1 ? 's' : '') + ' terminée' + (nTasks > 1 ? 's' : '') : 'Projet sans photo'}</h3><p class="muted">Ce projet n'a pas de photos, et c'est très bien comme ça.</p></div>` : '';
-    const done = p.status === 'done';
+  function dessiner() {
+    const visuel = baHTML(avant && urls[avant.storage_path], apres && urls[apres.storage_path]);
     main.innerHTML = `
-      <div class="room-head" style="margin-bottom:14px">
-        <a href="../profil/?u=${encodeURIComponent(owner.username)}">${avatarHTML(owner, 'md')}</a>
-        <div><h1 style="font-size:clamp(1.5rem,5vw,2.3rem);margin:0">${esc(p.title)}</h1>
-        <p class="muted" style="margin:0"><a href="../profil/?u=${encodeURIComponent(owner.username)}">${esc(owner.username)}</a> · ${room ? room.emoji + ' ' + esc(room.nom) : ''} · ${ago(p.completed_at || p.created_at)}${done ? '' : ' <span class="status-pill">en cours</span>'}</p></div>
+      <div class="row" style="margin-bottom:14px">
+        <a href="${BASE}profil/?u=${encodeURIComponent(qui.username)}">${avatarHTML(qui)}</a>
+        <div style="flex:1;min-width:0">
+          <a href="${BASE}profil/?u=${encodeURIComponent(qui.username)}" style="text-decoration:none"><b>${esc(qui.username)}</b></a>
+          <small class="muted" style="display:block">${piece ? piece.emoji + ' ' + esc(piece.nom) + ' · ' : ''}${p.completed_at ? ago(p.completed_at) : ''}</small>
+        </div>
       </div>
-      ${p.caption ? `<p>${esc(p.caption)}</p>` : ''}
-      ${sliders}${loose}${recap}
-      <div class="post-actions" style="margin:6px 0 18px"><button type="button" class="like" id="like" aria-pressed="${L.mine}"><span class="h">${L.mine ? '❤️' : '🤍'}</span><span class="n">${L.n}</span></button></div>
-      ${planHTML()}
-      ${isMe ? `<div class="card"><h3>Réglages du projet</h3>
-        ${done ? `<p class="muted">Qui peut voir ce projet ?</p><div class="vis-opts">${Object.entries(VIS).map(([k, v]) => `<label class="vis"><input type="radio" name="vis" value="${k}" ${p.visibility === k ? 'checked' : ''}><span><b>${v[0]} ${v[1]}</b><small>${v[2]}</small></span></label>`).join('')}</div>
-        <label class="field"><span>Légende</span><textarea id="caption" rows="2" maxlength="300">${esc(p.caption || '')}</textarea></label>
-        <button class="btn" id="save">Enregistrer</button>` : `<a class="btn" href="../rangement/?p=${p.id}">Continuer le projet →</a>`}
-        <button class="btn danger" id="del" style="margin-left:8px">Supprimer</button></div>` : ''}`;
-    initSliders(main);
-  }
-  render();
+      <h1>${esc(p.title)}</h1>
+      ${visuel || `<div class="card empty"><div class="em">${piece ? piece.emoji : '🧺'}</div><p class="muted">Pas de photo pour ce projet.</p></div>`}
+      ${p.caption ? `<p style="margin-top:14px">${esc(p.caption)}</p>` : ''}
+      <div class="row wrapline" style="margin-top:14px;gap:10px">
+        ${user ? `<button type="button" class="btn ghost small" id="aime" aria-pressed="${jAime}">${jAime ? '❤️' : '🤍'} <span id="n-aime">${nAimes + (jAime && !(aimes || []).some(l => l.user_id === user.id) ? 1 : 0)}</span></button>` : ''}
+        ${moi ? `<button type="button" class="btn ghost small" id="reglages">Qui peut voir ?</button>` : ''}
+        ${!moi && user ? signalerBtn('project', p.id) : ''}
+      </div>
+      ${moi ? `<p class="muted" style="margin-top:12px;font-size:.9rem">Visible par : ${VIS[p.visibility] ? VIS[p.visibility][0] + ' ' + VIS[p.visibility][1] : 'personne'}</p>
+        <p style="margin-top:18px"><button type="button" class="link" id="suppr">Supprimer ce projet</button></p>` : ''}`;
+    initBA(main);
 
-  main.addEventListener('click', async e => {
-    if (e.target.closest('#like')) {
-      const b = e.target.closest('#like'); const liked = b.getAttribute('aria-pressed') === 'true';
-      const { error } = await toggleLike(p.id, user.id, liked);
-      if (error) return toast('Oups : ' + error.message);
-      L = { n: Math.max(0, L.n + (liked ? -1 : 1)), mine: !liked }; render(); return;
-    }
-    const pin = e.target.closest('[data-pin]');
-    if (pin) {
-      const item = [...m.before, ...m.after].find(x => x.id === pin.dataset.pin); if (!item) return;
-      const next = !item.pinned;
-      const res = await withBadgeDiff(user.id, () => sb.from('media').update({ pinned: next }).eq('id', item.id));
-      if (res && res.error) return;
-      item.pinned = next; toast(next ? 'Épinglé à la une 📌' : 'Retiré de la une'); render(); return;
-    }
-    if (e.target.id === 'save') {
-      const vis = (main.querySelector('input[name=vis]:checked') || {}).value || p.visibility;
-      const caption = $('#caption').value.trim();
-      const { error } = await sb.from('projects').update({ visibility: vis, caption: caption || null }).eq('id', p.id);
-      if (error) return toast('Oups : ' + error.message);
-      p.visibility = vis; p.caption = caption || null; toast('Enregistré ✅'); render(); return;
-    }
-    if (e.target.id === 'del') {
-      if (!confirm('Supprimer ce projet et toutes ses photos ? C\'est définitif.')) return;
-      const paths = [...m.before, ...m.after].map(x => x.storage_path);
-      if (paths.length) await sb.storage.from('media').remove(paths);
-      const { error } = await sb.from('projects').delete().eq('id', p.id);
-      if (error) return toast('Oups : ' + error.message);
-      location.href = '../rangement/';
-    }
-  });
+    const a = $('#aime');
+    if (a) a.onclick = async () => {
+      const n = $('#n-aime');
+      jAime = !jAime;
+      a.setAttribute('aria-pressed', String(jAime));
+      a.firstChild.textContent = jAime ? '❤️ ' : '🤍 ';
+      n.textContent = Math.max(0, Number(n.textContent) + (jAime ? 1 : -1));
+      const { error } = jAime
+        ? await sb.from('likes').insert({ project_id: p.id, user_id: user.id })
+        : await sb.from('likes').delete().eq('project_id', p.id).eq('user_id', user.id);
+      if (error) toast('Oups : ' + error.message);
+    };
+
+    const r = $('#reglages');
+    if (r) r.onclick = () => sheet(`<h2>Qui peut voir ce projet ?</h2>
+      <div id="v-opts">${Object.entries(VIS).map(([k, [em, lab]]) =>
+        `<button type="button" class="choice" data-v="${k}" aria-pressed="${p.visibility === k}"><span class="em">${em}</span><span><b>${esc(lab)}</b></span></button>`).join('')}</div>
+      <button type="button" class="btn full" data-close>Terminé</button>`, { onOpen: s => {
+        $('#v-opts', s).onclick = async e => {
+          const b = e.target.closest('[data-v]'); if (!b) return;
+          const { error } = await sb.from('projects').update({ visibility: b.dataset.v }).eq('id', p.id);
+          if (error) return toast('Oups : ' + error.message);
+          p.visibility = b.dataset.v;
+          $$('#v-opts [data-v]', s).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+          toast('Enregistré'); dessiner();
+        };
+      } });
+
+    const d = $('#suppr');
+    if (d) d.onclick = () => sheet(`<h2>Supprimer ce projet ?</h2>
+      <p class="muted">Le projet et ses photos seront effacés définitivement. Impossible de revenir en arrière.</p>
+      <div class="btn-row"><button type="button" class="btn ghost" data-close>Annuler</button>
+        <button type="button" class="btn danger" id="d-ok">Supprimer</button></div>`, { onOpen: s => {
+        $('#d-ok', s).onclick = async () => {
+          $('#d-ok', s).disabled = true;
+          if (photos.length) await sb.storage.from('media').remove(photos.map(m => m.storage_path));
+          const { error } = await sb.from('projects').delete().eq('id', p.id);
+          if (error) { $('#d-ok', s).disabled = false; return toast('Oups : ' + error.message); }
+          location.href = BASE + 'profil/';
+        };
+      } });
+  }
+  dessiner();
 })();
+
 </script>
 </body>
 </html>

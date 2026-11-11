@@ -199,3 +199,13 @@ function buildLocalPlan(roomId, brief) {
     deco: merge(r.deco, picked.flatMap(p => p.decoIdees || []), 6)
   };
 }
+
+/* --- Noms utilisés par le site (les données ci-dessus restent inchangées) --- */
+const PIECES = ROOMS;
+const SOUCIS = PROBLEMS;
+const construirePlan = buildLocalPlan;
+const pieceById = id => PIECES.find(p => p.id === id) || null;
+const pieceAuHasard = (sauf) => {
+  const choix = PIECES.filter(p => p.id !== sauf);
+  return choix[Math.floor(Math.random() * choix.length)] || PIECES[0];
+};

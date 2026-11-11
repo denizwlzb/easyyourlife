@@ -3,224 +3,252 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Profil – EasyYourLife</title>
+<title>Mon profil – EasyYourLife</title>
+<meta name="description" content="Ton profil EasyYourLife : projets, amis, badges et réglages.">
+<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121317" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="apple-touch-icon" href="../assets/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="EasyYourLife">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="../assets/style.css?v=93b0748d">
-<script src="../assets/theme.js?v=229c1bf4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="../assets/eyl.css?v=c2aa9f9b">
 </head>
 <body data-base="../">
 <header id="nav"></header>
-<main class="wrap" id="main"><p class="muted">Chargement…</p></main>
-<input type="file" id="avatar-file" accept="image/*" hidden>
+<main class="wrap" id="main"><p class="muted"><span class="spinner"></span>Chargement…</p></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="../assets/app.js?v=6c603325"></script>
-<script src="../assets/rooms.js?v=5d6925fa"></script>
+<script src="../assets/outils.js?v=493391f2"></script>
+<script src="../assets/nouveautes.js?v=c688f9d4"></script>
+<script src="../assets/pieces.js?v=4d6c6c5c"></script>
+<script src="../assets/eyl.js?v=9fbf10bb"></script>
 <script>
+
 (async () => {
-  const main = $('#main');
-  const ROOMNAME = {}; ROOMS.forEach(r => { ROOMNAME[r.id] = r.nom; });
-  const STATUS_LABEL = { draft: 'Photos à prendre', planned: 'Plan prêt', doing: 'En cours', after: 'Photos après', done: 'Terminé' };
-
-  sb.auth.onAuthStateChange(async ev => {
-    if (ev === 'PASSWORD_RECOVERY') {
-      const p = prompt('Choisis ton nouveau mot de passe (8 caractères minimum)');
-      if (p && p.length >= 8) { const { error } = await sb.auth.updateUser({ password: p }); toast(error ? 'Oups : ' + error.message : 'Mot de passe changé ✅'); }
-      else if (p) toast('Mot de passe trop court.');
-    }
-  });
-
   const user = await initPage();
+  const main = $('#main');
   if (!user) { location.replace('../connexion/'); return; }
-  const me = user.id;
-  const target = new URLSearchParams(location.search).get('u');
 
-  const { data: profile } = target
-    ? await sb.from('profiles').select('*').eq('username', target).maybeSingle()
-    : await sb.from('profiles').select('*').eq('id', me).maybeSingle();
-  if (!profile) { main.innerHTML = '<div class="card empty"><span class="big-emoji">🔍</span><h2>Profil introuvable</h2><p class="muted">Ce pseudo n\'existe pas.</p><a class="btn" href="./">Mon profil</a></div>'; return; }
-  const isMe = profile.id === me;
-  document.title = `${profile.username} – EasyYourLife`;
-
-  let friendships = [], people = {};
-  async function loadFriends() {
-    const { data } = await sb.from('friendships').select('*').or(`requester_id.eq.${me},addressee_id.eq.${me}`);
-    friendships = data || [];
-    const ids = [...new Set(friendships.map(f => f.requester_id === me ? f.addressee_id : f.requester_id))];
-    people = {};
-    if (ids.length) {
-      const { data: ps } = await sb.from('profiles').select('id,username,avatar_path').in('id', ids);
-      (ps || []).forEach(p => { people[p.id] = p; });
-    }
-  }
-  const relation = id => friendships.find(f => f.requester_id === id || f.addressee_id === id);
-  const getRel = () => isMe ? null : relation(profile.id);
-  const isFriend = () => { const r = getRel(); return isMe || (r && r.status === 'accepted'); };
-  await loadFriends();
-
-  const [bc, ub, pj, pin] = await Promise.all([
-    sb.from('badges').select('*').order('sort_order'),
-    sb.from('user_badges').select('badge_code').eq('user_id', profile.id),
-    sb.from('projects').select('id,room,title,status,visibility,completed_at,created_at').eq('user_id', profile.id).order('created_at', { ascending: false }),
-    sb.from('media').select('id,project_id,tool,storage_path,angle,pinned_at').eq('user_id', profile.id).eq('pinned', true).order('pinned_at', { ascending: false }).limit(60)
-  ]);
-  const catalog = bc.data || [];
-  const earned = new Set((ub.data || []).map(r => r.badge_code));
-  const projects = pj.data || [];
-  const pinned = pin.data || [];
-  const media = await projectMedia(projects.map(p => p.id));
-  const covers = {}, projTitle = {};
-  projects.forEach(p => { projTitle[p.id] = p.title; const b = bestPair(media[p.id]); covers[p.id] = b ? (b.after || b.before).storage_path : null; });
-  const urls = await signedMap([...Object.values(covers), ...pinned.map(m => m.storage_path)]);
-
-  /* ----- Morceaux d'interface ----- */
-  function highlights() {
-    const groups = {};
-    pinned.forEach(m => { if (urls[m.storage_path]) (groups[m.tool || 'autre'] = groups[m.tool || 'autre'] || []).push(m); });
-    const keys = Object.keys(groups);
-    if (!keys.length) return isMe ? '<p class="muted" style="margin-top:14px">📌 Épingle des photos depuis la page d\'un projet : elles apparaîtront ici, rangées par outil, comme des stories à la une.</p>' : '';
-    return `<div class="hls" aria-label="À la une">${keys.map(k => {
-      const t = TOOLS.find(x => x.id === k);
-      return `<button type="button" class="hl" data-tool="${esc(k)}"><span class="hl-ring"><img src="${esc(urls[groups[k][0].storage_path])}" alt=""></span>${t ? t.emoji + ' ' + esc(t.nom) : '📌 Autres'}</button>`;
-    }).join('')}</div>`;
-  }
-  function projectsHTML() {
-    const list = projects.filter(p => isMe || p.status === 'done');
-    const tiles = list.map(p => {
-      const r = ROOMS.find(x => x.id === p.room) || ROOMS[0];
-      const u = covers[p.id] ? urls[covers[p.id]] : null;
-      const href = p.status === 'done' ? `../projet/?id=${p.id}` : `../rangement/?p=${p.id}`;
-      return `<a class="proj" href="${href}"><div class="cover">${u ? `<img src="${esc(u)}" alt="" loading="lazy">` : r.emoji}</div><div class="meta"><b>${esc(p.title)}</b>${p.status !== 'done' ? `<span class="status-pill">${STATUS_LABEL[p.status]}</span>` : (isMe ? `<small class="muted">${{ private: '🔒', friends: '👥', public: '🌍' }[p.visibility]}</small>` : '')}</div></a>`;
-    }).join('');
-    if (!list.length) return `<div class="card empty"><span class="big-emoji">📸</span><p class="muted">${isMe ? 'Aucun projet pour le moment.' : 'Aucun projet à voir pour le moment.'}</p>${isMe ? '<a class="btn" href="../rangement/?nouveau=1">Lancer un projet</a>' : ''}</div>`;
-    return `<div class="proj-grid">${tiles}</div>${isMe ? '<p style="margin-top:16px"><a class="btn small" href="../rangement/?nouveau=1">＋ Nouveau projet</a></p>' : ''}`;
-  }
-  function badgesHTML() {
-    if (!isFriend()) return '<div class="banner">🔒 Deviens ami avec ce membre pour voir ses badges.</div>';
-    return `<div class="badge-grid">${catalog.map(b => `<div class="badge ${earned.has(b.code) ? '' : 'locked'}"><div class="ico">${esc(b.icon)}</div><b>${esc(b.name)}</b><small>${esc(b.description)}</small></div>`).join('')}</div>`;
-  }
-  function friendsHTML() {
-    const recues = friendships.filter(f => f.status === 'pending' && f.addressee_id === me);
-    const envoyees = friendships.filter(f => f.status === 'pending' && f.requester_id === me);
-    const amis = friendships.filter(f => f.status === 'accepted');
-    const other = f => people[f.requester_id === me ? f.addressee_id : f.requester_id] || { username: '…' };
-    const who = f => { const o = other(f); return `<a href="?u=${encodeURIComponent(o.username)}" style="display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:700">${avatarHTML(o, 'sm')}${esc(o.username)}</a>`; };
-    return `<div class="card"><h3>Trouver des amis</h3>
-      <form id="search-form" class="row" style="border:0"><input type="search" id="search-q" placeholder="Chercher un pseudo" maxlength="24" style="flex:1"><button class="btn small" type="submit">Chercher</button></form>
-      <div id="search-res"></div></div>
-      ${recues.length ? `<div class="card"><h3>Demandes reçues</h3>${recues.map(f => `<div class="row">${who(f)}<div class="btns"><button type="button" class="btn small" data-act="accept" data-id="${esc(f.id)}">Accepter</button><button type="button" class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Refuser</button></div></div>`).join('')}</div>` : ''}
-      ${envoyees.length ? `<div class="card"><h3>Demandes envoyées</h3>${envoyees.map(f => `<div class="row">${who(f)}<button type="button" class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Annuler</button></div>`).join('')}</div>` : ''}
-      <div class="card"><h3>Mes amis (${amis.length})</h3>${amis.length ? amis.map(f => `<div class="row">${who(f)}<button type="button" class="btn small ghost" data-act="remove" data-id="${esc(f.id)}">Retirer</button></div>`).join('') : '<p class="muted">Pas encore d\'amis. Cherche un pseudo ci-dessus, ou partage le lien du site.</p>'}</div>`;
-  }
-  function relationButton() {
-    const rel = getRel();
-    if (!rel) return `<button type="button" class="btn" id="btn-add" data-id="${esc(profile.id)}">➕ Ajouter en ami</button>`;
-    if (rel.status === 'accepted') return '<span class="tag">✓ Amis</span>';
-    if (rel.requester_id === me) return '<span class="tag">Demande envoyée</span>';
-    return `<button type="button" class="btn" data-act="accept" data-id="${esc(rel.id)}">Accepter sa demande</button>`;
-  }
-
-  let tab = 'projets', editOpen = false;
-  function render() {
-    const doneCount = projects.filter(p => p.status === 'done').length;
-    const nFriends = friendships.filter(f => f.status === 'accepted').length;
-    const tabs = [['projets', 'Projets'], ['badges', 'Badges']].concat(isMe ? [['amis', 'Amis']] : []);
-    main.innerHTML = `
-      <div class="card"><div class="profile-top">
-        ${avatarHTML(profile, 'xl')}
-        <div style="flex:1;min-width:220px"><h1 style="font-size:clamp(1.6rem,5vw,2.4rem);margin:0">${esc(profile.username)}</h1>
-          <p class="muted" style="margin:.2rem 0 0">${esc(profile.bio || (isMe ? 'Ajoute une description avec « Modifier le profil ».' : ''))}</p>
-          <div class="stats"><div class="stat"><b>${doneCount}</b>projets</div><div class="stat"><b>${isFriend() ? earned.size : '–'}</b>badges</div>${isMe ? `<div class="stat"><b>${nFriends}</b>amis</div>` : ''}</div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${isMe ? '<button type="button" class="btn small ghost" id="btn-edit">✏️ Modifier le profil</button><button type="button" class="btn small ghost" id="btn-theme">🎨 Apparence</button>' : relationButton()}</div>
-      </div>${highlights()}</div>
-      ${isMe ? `<div class="card" id="edit-card" ${editOpen ? '' : 'hidden'}><h3>Modifier mon profil</h3>
-        <p><label class="btn small ghost" style="cursor:pointer">📷 Changer ma photo<input type="file" id="avatar-pick" accept="image/*" hidden></label></p>
-        <form id="edit-form">
-          <label class="field"><span>Pseudo</span><input type="text" id="e-pseudo" value="${esc(profile.username)}" maxlength="24"></label>
-          <label class="field"><span>Description (200 caractères max)</span><textarea id="e-bio" rows="2" maxlength="200">${esc(profile.bio || '')}</textarea></label>
-          <button class="btn" type="submit">Enregistrer</button></form></div>` : ''}
-      <div class="seg" id="ptabs" role="tablist">${tabs.map(([k, l]) => `<button type="button" data-p="${k}" aria-selected="${k === tab}">${l}</button>`).join('')}</div>
-      <div id="p-projets" ${tab === 'projets' ? '' : 'hidden'}>${projectsHTML()}</div>
-      <div id="p-badges" ${tab === 'badges' ? '' : 'hidden'}><div class="card">${badgesHTML()}</div></div>
-      ${isMe ? `<div id="p-amis" ${tab === 'amis' ? '' : 'hidden'}>${friendsHTML()}</div>` : ''}`;
-  }
-  render();
-
-  /* ----- Actions ----- */
-  async function setAvatar(file) {
-    try {
-      toast('Envoi de la photo…', 6000);
-      const blob = await compressImage(file, { max: 512, quality: 0.85, square: true });
-      const path = `${me}/avatar-${Date.now()}.jpg`;
-      const up = await sb.storage.from('avatars').upload(path, blob, { contentType: 'image/jpeg' });
-      if (up.error) return toast('Oups : ' + up.error.message);
-      const old = profile.avatar_path;
-      const res = await withBadgeDiff(me, () => sb.from('profiles').update({ avatar_path: path }).eq('id', me));
-      if (res && res.error) { await sb.storage.from('avatars').remove([path]); return; }
-      if (old) sb.storage.from('avatars').remove([old]);
-      profile.avatar_path = path; if (ME) ME.avatar_path = path;
-      renderNav(user); editOpen = true; render(); toast('Photo de profil mise à jour ✅');
-    } catch (e) { toast('Oups : ' + e.message); }
-  }
-  async function sendRequest(otherId) {
-    const { error } = await sb.from('friendships').insert({ requester_id: me, addressee_id: otherId });
-    if (error) return toast(error.code === '23505' ? 'Une demande existe déjà.' : 'Oups : ' + error.message);
-    toast('Demande envoyée ✅'); await loadFriends(); render();
-  }
-
-  main.addEventListener('click', async e => {
-    if (e.target.closest('#btn-edit')) { editOpen = !editOpen; $('#edit-card').hidden = !editOpen; return; }
-    if (e.target.closest('#btn-theme')) { if (window.EYL_THEME) window.EYL_THEME.open(); return; }
-    const p = e.target.closest('[data-p]');
-    if (p) { tab = p.dataset.p; render(); return; }
-    const hl = e.target.closest('[data-tool]');
-    if (hl) {
-      const k = hl.dataset.tool, t = TOOLS.find(x => x.id === k);
-      const items = pinned.filter(m => (m.tool || 'autre') === k && urls[m.storage_path])
-        .map(m => ({ url: urls[m.storage_path], caption: (projTitle[m.project_id] || '') + (m.angle ? ' · ' + m.angle : '') }));
-      openStory(items, { who: profile.username, title: t ? t.nom : 'Autres', avatar: avatarHTML(profile, 'sm') });
+  const vise = new URLSearchParams(location.search).get('u');
+  let profil = ME;
+  if (vise && vise !== (ME && ME.username)) {
+    const { data } = await sb.from('profiles').select('*').eq('username', vise).maybeSingle();
+    if (!data) {
+      main.innerHTML = `<div class="card empty"><div class="em">🔍</div><h2>Compte introuvable</h2>
+        <p class="muted">Ce pseudo n'existe pas ou n'est plus accessible.</p>
+        <a class="btn ghost" href="./" style="margin-top:12px">Mon profil</a></div>`;
       return;
     }
-    const add = e.target.closest('#btn-add');
-    if (add) { await sendRequest(add.dataset.id); return; }
-    const act = e.target.closest('[data-act]');
-    if (act) {
-      const id = act.dataset.id;
-      if (act.dataset.act === 'accept') await withBadgeDiff(me, () => sb.from('friendships').update({ status: 'accepted' }).eq('id', id));
-      else await sb.from('friendships').delete().eq('id', id);
-      if (isMe) { await loadFriends(); render(); } else location.reload();
+    profil = data;
+  }
+  const moi = profil.id === user.id;
+  document.title = (moi ? 'Mon profil' : '@' + profil.username) + ' – EasyYourLife';
+
+  /* --- Données --- */
+  const [liens, projets, badges] = await Promise.all([
+    sb.from('friendships').select('*').or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`),
+    sb.from('projects').select('id,user_id,room,title,status,visibility,completed_at,created_at').eq('user_id', profil.id).order('created_at', { ascending: false }),
+    sb.from('user_badges').select('badge_code').eq('user_id', profil.id)
+  ]);
+  const amitie = (liens.data || []);
+  const relation = id => amitie.find(f => f.requester_id === id || f.addressee_id === id);
+  const estAmi = () => moi || (relation(profil.id) || {}).status === 'accepted';
+  const mesProjets = (projets.data || []).filter(p => moi || p.status === 'done');
+  // Ce que la personne en face a le droit de voir
+  const visibles = () => mesProjets.filter(p => moi || p.visibility === 'public' || (estAmi() && p.visibility === 'friends'));
+  const termines = () => visibles().filter(p => p.status === 'done');
+  const nbAmis = amitie.filter(f => f.status === 'accepted').length;
+
+  function enTete() {
+    const rel = relation(profil.id);
+    let bouton = '';
+    if (!moi) {
+      if (!rel) bouton = `<button type="button" class="btn small" id="ajouter">Ajouter en ami</button>`;
+      else if (rel.status === 'accepted') bouton = `<span class="tag good">✓ Amis</span>`;
+      else if (rel.requester_id === user.id) bouton = `<span class="tag">Demande envoyée</span>`;
+      else bouton = `<button type="button" class="btn small" data-rep="accept" data-id="${rel.id}">Accepter</button>`;
     }
-  });
-  main.addEventListener('change', e => {
-    if (e.target.id === 'avatar-pick' && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; setAvatar(f); }
-  });
-  main.addEventListener('submit', async e => {
-    e.preventDefault();
-    if (e.target.id === 'search-form') {
-      const term = $('#search-q').value.replace(/[^A-Za-z0-9_]/g, '');
-      if (term.length < 2) return toast('Entre au moins 2 caractères.');
-      const { data } = await sb.from('profiles').select('id,username,avatar_path').ilike('username', `%${term}%`).neq('id', me).limit(8);
-      const res = data || [];
-      $('#search-res').innerHTML = res.length ? res.map(p => {
-        const r = relation(p.id);
-        const btn = !r ? `<button type="button" class="btn small" data-add="${esc(p.id)}">Ajouter</button>` : `<span class="tag">${r.status === 'accepted' ? 'Ami' : 'En attente'}</span>`;
-        return `<div class="row"><a href="?u=${encodeURIComponent(p.username)}" style="display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:700">${avatarHTML(p, 'sm')}${esc(p.username)}</a>${btn}</div>`;
-      }).join('') : '<p class="muted">Aucun membre trouvé.</p>';
-      $$('#search-res [data-add]').forEach(b => { b.onclick = () => sendRequest(b.dataset.add); });
+    return `<div class="card">
+      <div class="row" style="gap:16px">
+        ${avatarHTML(profil, 'lg')}
+        <div style="flex:1;min-width:0">
+          <h1 style="margin:0 0 2px;font-size:1.35rem">${esc(profil.username)}</h1>
+          <p class="muted" style="margin:0;font-size:.9rem">${esc(profil.bio || (moi ? 'Ajoute une phrase pour te présenter.' : 'Membre EasyYourLife'))}</p>
+          <div class="tags" style="margin-top:10px">
+            <span class="tag">${termines().length} projet${termines().length > 1 ? 's' : ''} ${moi ? 'fini' : 'visible'}${termines().length > 1 ? 's' : ''}</span>
+            ${moi ? `<span class="tag">${nbAmis} ami${nbAmis > 1 ? 's' : ''}</span>` : ''}
+            ${profil.is_public ? '<span class="tag">🌍 public</span>' : ''}
+          </div>
+        </div>
+      </div>
+      ${bouton ? `<div class="btn-row" style="margin-top:14px">${bouton}</div>` : ''}
+      ${moi ? `<div class="btn-row" style="margin-top:14px">
+        <button type="button" class="btn ghost small" id="editer">Modifier mon profil</button>
+        <button type="button" class="btn ghost small" id="amis">Mes amis</button>
+      </div>` : `<p style="margin:12px 0 0">${signalerBtn('profile', profil.id)}</p>`}
+    </div>`;
+  }
+
+  function projetsHTML(urls) {
+    if (!estAmi() && !profil.is_public) {
+      return `<div class="card empty"><div class="em">🔒</div><h2>Compte privé</h2>
+        <p class="muted">Ajoute ${esc(profil.username)} en ami pour voir ses projets.</p></div>`;
     }
-    if (e.target.id === 'edit-form') {
-      const username = $('#e-pseudo').value.trim(), bio = $('#e-bio').value.trim();
-      if (!/^[A-Za-z0-9_]{3,24}$/.test(username)) return toast('Pseudo invalide (3 à 24 lettres, chiffres ou _).');
-      const { error } = await sb.from('profiles').update({ username, bio: bio || null }).eq('id', me);
-      if (error) return toast(error.code === '23505' ? 'Ce pseudo est déjà pris.' : 'Oups : ' + error.message);
-      toast('Profil mis à jour ✅'); setTimeout(() => { location.href = './'; }, 500);
+    const vus = visibles();
+    if (!vus.length) return `<div class="card empty"><div class="em">📭</div><p class="muted">${moi ? "Tu n'as pas encore de projet. Choisis un outil pour commencer." : 'Rien de partagé pour le moment.'}</p>
+      ${moi ? `<a class="btn" href="${BASE}outils/" style="margin-top:12px">Voir les outils</a>` : ''}</div>`;
+    return `<div class="card flat"><div class="list">${vus.map(p => {
+      const piece = (typeof PIECES !== 'undefined' ? PIECES.find(r => r.id === p.room) : null);
+      const href = p.status === 'done' ? `${BASE}projet/?id=${p.id}` : `${BASE}rangement/?p=${p.id}`;
+      const img = urls[p.id];
+      return `<a class="item" href="${href}">
+        ${img ? `<img class="thumb" src="${esc(img)}" alt="" loading="lazy">` : `<span class="thumb">${piece ? piece.emoji : '🧺'}</span>`}
+        <span class="item-body"><b>${esc(p.title)}</b>
+        <small>${p.status === 'done' ? 'Terminé ' + ago(p.completed_at) : 'En cours'}${p.status === 'done' ? ' · ' + ({ private: '🔒 privé', friends: '👥 amis', public: '🌍 public' }[p.visibility] || '') : ''}</small></span>
+      </a>`;
+    }).join('')}</div></div>`;
+  }
+
+  async function dessiner() {
+    const ids = mesProjets.map(p => p.id);
+    let urls = {};
+    if (ids.length) {
+      const { data: med } = await sb.from('media').select('project_id,kind,storage_path,position').in('project_id', ids).order('position');
+      const couv = {};
+      (med || []).forEach(m => { if (!couv[m.project_id] || m.kind === 'after') couv[m.project_id] = m.storage_path; });
+      const signe = await signedMap(Object.values(couv));
+      Object.entries(couv).forEach(([k, v]) => { if (signe[v]) urls[k] = signe[v]; });
     }
-  });
+    const codes = (badges.data || []).map(b => b.badge_code);
+    let badgesHTML = '';
+    if (codes.length) {
+      const { data } = await sb.from('badges').select('*').in('code', codes).order('sort_order');
+      badgesHTML = `<div class="sec"><h2>Badges</h2></div>
+        <div class="card flat"><div class="tags">${(data || []).map(b =>
+          `<span class="tag" title="${esc(b.description)}">${esc(b.icon)} ${esc(b.name)}</span>`).join('')}</div></div>`;
+    }
+    main.innerHTML = enTete()
+      + `<div class="sec"><h2>${moi ? 'Mes projets' : 'Ses projets'}</h2></div>` + projetsHTML(urls)
+      + badgesHTML
+      + (moi ? `<div class="sec"><h2>Mon compte</h2></div>
+        <div class="card flat"><div class="list">
+          <button type="button" class="item" id="regles"><span class="thumb">📜</span><span class="item-body"><b>Les règles du site</b><small>Ce qui est autorisé, ce qui ne l'est pas</small></span></button>
+          <button type="button" class="item" id="apparence"><span class="thumb">🎨</span><span class="item-body"><b>Apparence</b><small>Thème, couleur, taille du texte</small></span></button>
+          <button type="button" class="item" id="deco"><span class="thumb">🚪</span><span class="item-body"><b>Se déconnecter</b></span></button>
+        </div></div>` : '');
+
+    if (moi) {
+      $('#editer').onclick = editer;
+      $('#amis').onclick = gererAmis;
+      $('#regles').onclick = () => sheet(`<h2>Les règles</h2><p class="muted">Elles valent pour les photos, les textes et les pseudos.</p>${REGLES_HTML}
+        <p class="muted" style="font-size:.88rem;margin-top:14px">Un contenu signalé par deux personnes est masqué automatiquement en attendant une vérification.</p>
+        <button type="button" class="btn full" data-close style="margin-top:8px">Fermer</button>`);
+      $('#apparence').onclick = ouvrirReglages;
+      $('#deco').onclick = async () => { await sb.auth.signOut(); location.href = BASE + 'index.html'; };
+    } else {
+      const add = $('#ajouter');
+      if (add) add.onclick = async () => {
+        add.disabled = true;
+        const { error } = await sb.from('friendships').insert({ requester_id: user.id, addressee_id: profil.id });
+        if (error) { add.disabled = false; return toast('Oups : ' + error.message); }
+        amitie.push({ requester_id: user.id, addressee_id: profil.id, status: 'pending' });
+        toast('Demande envoyée'); dessiner();
+      };
+      const rep = $('[data-rep]');
+      if (rep) rep.onclick = async () => {
+        await avecBadges(user.id, () => sb.from('friendships').update({ status: 'accepted' }).eq('id', rep.dataset.id));
+        location.reload();
+      };
+    }
+  }
+
+  /* --- Modifier son profil --- */
+  function editer() {
+    sheet(`<h2>Mon profil</h2>
+      <label class="field"><span>Photo</span><input type="file" id="e-photo" accept="image/*"></label>
+      <label class="field"><span>Pseudo</span><input type="text" id="e-pseudo" maxlength="24" value="${esc(profil.username)}"></label>
+      <label class="field"><span>Ta phrase (facultatif)</span><textarea id="e-bio" maxlength="160" rows="2">${esc(profil.bio || '')}</textarea></label>
+      <button type="button" class="choice" id="e-public" aria-pressed="${!!profil.is_public}">
+        <span class="em">🌍</span><span><b>Compte public</b><small>Les autres membres peuvent te trouver dans « Découvrir ». Tes projets privés restent privés.</small></span>
+      </button>
+      <div class="btn-row" style="margin-top:16px">
+        <button type="button" class="btn ghost" data-close>Annuler</button>
+        <button type="button" class="btn" id="e-save">Enregistrer</button>
+      </div>`, { onOpen: (s, close) => {
+      let pub = !!profil.is_public;
+      $('#e-public', s).onclick = e => { pub = !pub; e.currentTarget.setAttribute('aria-pressed', String(pub)); };
+      $('#e-save', s).onclick = async () => {
+        const pseudo = $('#e-pseudo', s).value.trim(), bio = $('#e-bio', s).value.trim();
+        if (!/^[A-Za-z0-9_]{3,24}$/.test(pseudo)) return toast('Pseudo : 3 à 24 lettres, chiffres ou _.');
+        if (texteInterdit(pseudo) || texteInterdit(bio)) return toast('Ce texte ne respecte pas les règles du site.');
+        $('#e-save', s).disabled = true;
+        const patch = { username: pseudo, bio: bio || null };
+        const f = $('#e-photo', s).files[0];
+        if (f) {
+          try {
+            const blob = await compressImage(f, { max: 512, square: true });
+            const chemin = `${user.id}/${Date.now()}.jpg`;
+            const up = await sb.storage.from('avatars').upload(chemin, blob, { contentType: 'image/jpeg' });
+            if (up.error) throw up.error;
+            patch.avatar_path = chemin;
+          } catch (err) { $('#e-save', s).disabled = false; return toast('Photo refusée : ' + (err.message || err)); }
+        }
+        let res = await sb.from('profiles').update({ ...patch, is_public: pub }).eq('id', user.id);
+        if (res.error && /is_public/.test(res.error.message)) res = await sb.from('profiles').update(patch).eq('id', user.id);
+        if (res.error) { $('#e-save', s).disabled = false; return toast('Oups : ' + res.error.message); }
+        close(); toast('Profil enregistré'); location.href = './';
+      };
+    } });
+  }
+
+  /* --- Amis --- */
+  async function gererAmis() {
+    const ids = [...new Set(amitie.map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id))];
+    const { data } = ids.length ? await sb.from('profiles').select('id,username,avatar_path').in('id', ids) : { data: [] };
+    const gens = {}; (data || []).forEach(p => { gens[p.id] = p; });
+    const ligne = (f, type) => {
+      const autre = gens[f.requester_id === user.id ? f.addressee_id : f.requester_id] || { username: 'membre' };
+      const actions = type === 'recue'
+        ? `<button type="button" class="btn small" data-ok="${f.id}">Accepter</button><button type="button" class="link" data-no="${f.id}">Refuser</button>`
+        : type === 'envoyee' ? `<span class="tag">en attente</span>`
+        : `<button type="button" class="link" data-no="${f.id}">Retirer</button>`;
+      return `<div class="item">${avatarHTML(autre, 'sm')}<span class="item-body"><b>${esc(autre.username)}</b></span><span class="row" style="gap:8px">${actions}</span></div>`;
+    };
+    const recues = amitie.filter(f => f.status === 'pending' && f.addressee_id === user.id);
+    const envoyees = amitie.filter(f => f.status === 'pending' && f.requester_id === user.id);
+    const amis = amitie.filter(f => f.status === 'accepted');
+    sheet(`<h2>Mes amis</h2>
+      <label class="field"><span>Chercher quelqu'un par son pseudo</span><input type="search" id="a-q" placeholder="pseudo"></label>
+      <div id="a-res"></div>
+      ${recues.length ? `<h3>Demandes reçues</h3><div class="list">${recues.map(f => ligne(f, 'recue')).join('')}</div>` : ''}
+      ${amis.length ? `<h3>Mes amis</h3><div class="list">${amis.map(f => ligne(f, 'ami')).join('')}</div>` : '<p class="muted">Tu n\'as pas encore d\'ami ici.</p>'}
+      ${envoyees.length ? `<h3>Demandes envoyées</h3><div class="list">${envoyees.map(f => ligne(f, 'envoyee')).join('')}</div>` : ''}
+      <button type="button" class="btn ghost full" data-close style="margin-top:16px">Fermer</button>`, { onOpen: (s, close) => {
+      let t = null;
+      $('#a-q', s).oninput = e => {
+        clearTimeout(t);
+        const q = e.target.value.trim();
+        if (q.length < 2) { $('#a-res', s).innerHTML = ''; return; }
+        t = setTimeout(async () => {
+          const { data: res } = await sb.from('profiles').select('id,username,avatar_path').ilike('username', `%${q}%`).neq('id', user.id).limit(8);
+          $('#a-res', s).innerHTML = (res || []).length
+            ? `<div class="list">${res.map(p => `<a class="item" href="./?u=${encodeURIComponent(p.username)}">${avatarHTML(p, 'sm')}<span class="item-body"><b>${esc(p.username)}</b></span></a>`).join('')}</div>`
+            : '<p class="muted">Aucun pseudo ne correspond.</p>';
+        }, 280);
+      };
+      s.addEventListener('click', async e => {
+        const ok = e.target.closest('[data-ok]'), no = e.target.closest('[data-no]');
+        if (ok) { await avecBadges(user.id, () => sb.from('friendships').update({ status: 'accepted' }).eq('id', ok.dataset.ok)); close(); location.reload(); }
+        if (no) { await sb.from('friendships').delete().eq('id', no.dataset.no); close(); location.reload(); }
+      });
+    } });
+  }
+
+  await dessiner();
 })();
+
 </script>
 </body>
 </html>
