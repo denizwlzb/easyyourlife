@@ -11,6 +11,7 @@ Site statique sur **GitHub Pages** + **Supabase** (comptes, base, photos, foncti
 index.html          Accueil : outils + fil des amis / Découvrir
 connexion/          Inscription et connexion
 rangement/          Outil 1 : liste des projets et tunnel en 5 étapes
+apprendre/          Le déclic du jour : une découverte par jour, la même pour tous, avec débat
 projet/             Page d'un projet : avant/après, likes, épingler, visibilité
 profil/             Profil : photo, à la une, projets, badges, amis
 badges/             Catalogue des badges
@@ -18,6 +19,7 @@ assets/style.css    Styles et 7 thèmes
 assets/theme.js     Panneau de personnalisation (bouton 🎨)
 assets/app.js       Connexion Supabase + fonctions communes + liste des outils
 assets/rooms.js     Pièces et plan « classique » (sans IA)
+assets/lecons.js     Les découvertes du jour (une entrée = une découverte)
 ```
 
 ## Activer l'IA (plan personnalisé à partir des photos)
@@ -64,3 +66,34 @@ GitHub Pages garde les fichiers 10 minutes en cache. Pour qu'une page neuve ne s
 chaque fichier de `assets/` est appelé avec `?v=<empreinte>` dans les pages HTML. **Quand tu modifies un fichier de `assets/`,
 mets à jour ce numéro** dans les pages HTML (il change à chaque modification du contenu). Un filet de sécurité dans `assets/app.js`
 affiche un message clair avec un bouton « Recharger » si une page reste bloquée sur « Chargement… ».
+
+## Le déclic du jour (apprendre/)
+
+Une découverte par jour, **la même pour tout le monde** : elle dépend uniquement de la date (heure de Paris).
+Le jour 0 est le 13 octobre 2026. Les découvertes sont dans `assets/lecons.js` : pour en ajouter, copie une entrée à la **fin** de la liste
+(id unique). Le débat est rattaché à l'`id` : ne le modifie jamais une fois publié.
+La série et le nombre de découvertes sont gardés sur l'appareil (localStorage).
+
+### Activer le débat (une fois, dans Supabase > SQL Editor)
+
+```sql
+create table if not exists public.daily_takes (
+  id uuid primary key default gen_random_uuid(),
+  lesson text not null,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  parent_id uuid references public.daily_takes(id) on delete cascade,
+  stance text check (stance in ('pour','contre')),
+  body text not null default '' check (char_length(body) <= 400),
+  created_at timestamptz not null default now(),
+  check ((parent_id is null and stance is not null) or (parent_id is not null and stance is null and char_length(body) > 0))
+);
+create unique index if not exists daily_takes_one_per_lesson on public.daily_takes (lesson, user_id) where parent_id is null;
+create index if not exists daily_takes_lesson_idx on public.daily_takes (lesson);
+alter table public.daily_takes enable row level security;
+create policy "membres lisent" on public.daily_takes for select to authenticated using (true);
+create policy "membres ecrivent" on public.daily_takes for insert to authenticated with check (user_id = auth.uid());
+create policy "auteur modifie" on public.daily_takes for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "auteur supprime" on public.daily_takes for delete to authenticated using (user_id = auth.uid());
+```
+
+Tant que la table n'existe pas, la page affiche « Le débat ouvre bientôt » et le reste fonctionne normalement.

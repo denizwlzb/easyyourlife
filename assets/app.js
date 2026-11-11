@@ -29,6 +29,7 @@ let ME = null;
 // ====== LISTE DES OUTILS : pour ajouter un outil, ajoute simplement une ligne ici ======
 const TOOLS = [
   { id: 'rangement', nom: 'Ranger & décorer', emoji: '🏠', desc: 'Photographie ta pièce, reçois un plan sur mesure, compare l\'avant et l\'après.', href: 'rangement/', statut: 'dispo' },
+  { id: 'apprendre', nom: 'Le déclic du jour', emoji: '💡', desc: 'Une découverte par jour, la même pour tout le monde. Apprends, puis débats-en.', href: 'apprendre/', statut: 'dispo' },
   { id: 'bientot', nom: 'Prochain outil', emoji: '✨', desc: 'Un nouvel outil pour te simplifier la vie arrive bientôt.', href: '#', statut: 'bientot' }
 ];
 
@@ -199,12 +200,13 @@ function renderNav(user) {
   const el = $('#nav'); if (!el) return;
   const path = location.pathname;
   const cur = seg => path.includes('/' + seg) ? ' aria-current="page"' : '';
-  const isHome = !/\/(rangement|badges|profil|connexion|projet)\//.test(path);
+  const isHome = !/\/(rangement|badges|profil|connexion|projet|apprendre)\//.test(path);
   el.innerHTML = `<div class="nav-in">
     <a class="brand" href="${BASE}index.html">✨ EasyYourLife</a>
     <nav class="nav-links" aria-label="Navigation principale">
       <a class="nl" href="${BASE}index.html"${isHome ? ' aria-current="page"' : ''}>Accueil</a>
       <a class="nl" href="${BASE}rangement/"${cur('rangement/')}>Ranger &amp; décorer</a>
+      <a class="nl" href="${BASE}apprendre/"${cur('apprendre/')}>Apprendre</a>
       <a class="nl" href="${BASE}badges/"${cur('badges/')}>Badges</a>
       ${user ? `<a class="nl" href="${BASE}profil/"${cur('profil/')}>Profil</a>` : ''}
     </nav>
